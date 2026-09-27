@@ -1,0 +1,1567 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>qub — standalone reference viewer</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f7faf3;
+        --text: #1a1f1a;
+        --text-soft: #4a544a;
+        --border: #c9d4be;
+        --accent: #6db233;
+        --ok: #3b9b3b;
+        --fail: #c83333;
+        --code: #efeae0;
+        --running: #b88823;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0e120e;
+          --text: #f0f4ec;
+          --text-soft: #a7b09f;
+          --border: #2e372b;
+          --accent: #84cc4f;
+          --ok: #6db233;
+          --fail: #ff5e5e;
+          --code: #1a201a;
+          --running: #d6a83a;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--text);
+      }
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 2.5rem 1.25rem 4rem;
+      }
+      header {
+        margin-bottom: 2rem;
+      }
+      h1 {
+        font-size: 1.75rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        margin: 0 0 0.25rem;
+      }
+      h2 {
+        font-size: 1.0625rem;
+        font-weight: 600;
+        margin: 2rem 0 0.5rem;
+        letter-spacing: -0.005em;
+      }
+      .lead {
+        color: var(--text-soft);
+        margin: 0;
+        font-size: 0.95rem;
+        line-height: 1.45;
+      }
+      .caption {
+        color: var(--text-soft);
+        margin: 0 0 0.5rem;
+        font-size: 0.85rem;
+        line-height: 1.5;
+      }
+      section {
+        margin-bottom: 1.5rem;
+      }
+      p {
+        line-height: 1.55;
+        margin: 0 0 0.75rem;
+      }
+      p:last-child {
+        margin-bottom: 0;
+      }
+      code {
+        background: var(--code);
+        padding: 0.1em 0.35em;
+        border-radius: 3px;
+        font-size: 0.9em;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      a {
+        color: var(--accent);
+        text-decoration-thickness: 1px;
+        text-underline-offset: 2px;
+      }
+      a:hover {
+        text-decoration-thickness: 2px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.95rem;
+        margin-top: 0.5rem;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 0.55rem 0.5rem;
+        border-bottom: 1px solid var(--border);
+      }
+      th {
+        font-weight: 500;
+        color: var(--text-soft);
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .status-ok {
+        color: var(--ok);
+        font-weight: 500;
+      }
+      .status-fail {
+        color: var(--fail);
+        font-weight: 500;
+      }
+      .meta {
+        color: var(--text-soft);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      #summary {
+        font-size: 1rem;
+        margin: 0;
+      }
+      #summary.running {
+        color: var(--running);
+      }
+      #summary.ok {
+        color: var(--ok);
+        font-weight: 500;
+      }
+      #summary.fail {
+        color: var(--fail);
+        font-weight: 500;
+      }
+      .error-detail {
+        color: var(--text-soft);
+        font-size: 0.8rem;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        word-break: break-word;
+      }
+      .recover-form {
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+        margin-top: 0.5rem;
+      }
+      .recover-form input[type="url"] {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.9rem;
+        padding: 0.55rem 0.7rem;
+        background: var(--bg);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+      }
+      .recover-form input[type="url"]:focus {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+      }
+      .recover-form button {
+        align-self: flex-start;
+        font: inherit;
+        font-size: 0.95rem;
+        font-weight: 500;
+        padding: 0.5rem 1.1rem;
+        background: var(--accent);
+        color: white;
+        border: 1px solid var(--accent);
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .recover-form button:hover:not(:disabled) {
+        opacity: 0.9;
+      }
+      .recover-form button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .recover-status {
+        margin: 0.75rem 0 0;
+        font-size: 0.9rem;
+      }
+      .recover-status[data-state="info"] {
+        color: var(--running);
+      }
+      .recover-status[data-state="ok"] {
+        color: var(--ok);
+        font-weight: 500;
+      }
+      .recover-status[data-state="fail"] {
+        color: var(--fail);
+        font-weight: 500;
+      }
+      .recover-output {
+        margin-top: 1rem;
+        padding: 0.75rem 1rem;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: var(--code);
+      }
+      .recover-output dl {
+        margin: 0 0 0.75rem;
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 0.25rem 0.75rem;
+        font-size: 0.85rem;
+      }
+      .recover-output dt {
+        color: var(--text-soft);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-size: 0.7rem;
+        align-self: center;
+      }
+      .recover-output dd {
+        margin: 0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.85rem;
+        word-break: break-all;
+      }
+      .recover-body {
+        white-space: pre-wrap;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.9rem;
+        margin: 0;
+        line-height: 1.5;
+      }
+      footer {
+        margin-top: 3rem;
+        padding-top: 1.25rem;
+        border-top: 1px solid var(--border);
+        color: var(--text-soft);
+        font-size: 0.85rem;
+      }
+      footer p {
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>qub</h1>
+        <p class="lead">
+          standalone reference viewer · self-tests for the wrapper + tlock +
+          full-pipeline crypto, plus a recover-by-URL form for live qubs
+        </p>
+      </header>
+
+      <section>
+        <p id="summary" class="running" role="status" aria-live="polite">
+          running self-tests…
+        </p>
+      </section>
+
+      <section>
+        <h2>Phase 1 — outer wrapper unwrap</h2>
+        <p class="caption">
+          Cross-language test vectors from
+          <code>crates/qub-core/tests/vectors/wrapper_v1.json</code>. AES-256-GCM via
+          WebCrypto, AAD = qub_id (<a href="../protocol/PROTOCOL.md"
+            >PROTOCOL.md §13</a
+          >).
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">vector</th>
+              <th scope="col">size</th>
+              <th scope="col">status</th>
+            </tr>
+          </thead>
+          <tbody id="wrapper-results"></tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Phase 2 — tlock decrypt</h2>
+        <p class="caption">
+          drand quicknet round + signature + tlock ciphertext + plaintext
+          fixture. BLS12-381 IBE via vendored
+          <a href="lib/tlock-bundle.js">tlock-js bundle</a> (≈173 KB minified;
+          tlock-js + drand-client + @noble/curves/hashes + chacha20poly1305 +
+          buffer + sha3_256). The standalone never fetches drand from inside —
+          it decrypts a ciphertext using a pre-supplied round signature, exactly
+          the same path as the qub.social viewer.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">fixture</th>
+              <th scope="col">round</th>
+              <th scope="col">status</th>
+            </tr>
+          </thead>
+          <tbody id="tlock-results"></tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Phase 3 — full pipeline</h2>
+        <p class="caption">
+          The same recovery code Phase 4 runs on a live qub, fed a pinned
+          fixture instead of the network — one private (wrapped) and one public
+          (bare) qub: resolve the delivery shape, check it agrees with the
+          inner visibility, check the drand round binding, tlock-decrypt,
+          verify body_hash, and recompute qub_id. The <code>refuse:</code> rows
+          feed it inputs the protocol requires rejecting. The fixture is
+          <code>crates/qub-core/tests/vectors/standalone_pipeline_v1.json</code>,
+          which the Rust reference implementation also unlocks in its test
+          suite.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">fixture</th>
+              <th scope="col">round</th>
+              <th scope="col">status</th>
+            </tr>
+          </thead>
+          <tbody id="full-pipeline-results"></tbody>
+        </table>
+        <p class="caption" id="full-pipeline-recovered" hidden>
+          Recovered body: <code id="full-pipeline-body"></code>
+        </p>
+      </section>
+
+      <section>
+        <h2>Phase 4 — recover a real qub</h2>
+        <p class="caption">
+          Paste a qub link (from any host) or a bare Arweave transaction id.
+          The page fetches the stored bytes from Arweave, fetches the drand
+          round signature, and recovers the body. For a private qub the part
+          after <code>#</code> is the AES-256-GCM key — the page never sends it
+          anywhere, and browsers don't transmit fragments to servers. A public
+          qub has no key.
+        </p>
+        <form
+          id="recover-form"
+          class="recover-form"
+          autocomplete="off"
+          spellcheck="false"
+        >
+          <label for="recover-input" class="caption" style="margin: 0">
+            qub URL
+          </label>
+          <input
+            id="recover-input"
+            type="text"
+            inputmode="url"
+            placeholder="https://qub.social/c/&lt;tx_id&gt;#&lt;key&gt; or &lt;tx_id&gt;"
+            aria-describedby="recover-status"
+          />
+          <button id="recover-button" type="submit">Recover</button>
+        </form>
+        <p
+          id="recover-status"
+          class="recover-status"
+          role="status"
+          aria-live="polite"
+        ></p>
+        <div id="recover-output" class="recover-output" hidden>
+          <dl>
+            <dt>tx_id</dt>
+            <dd id="recover-meta-tx"></dd>
+            <dt>qub_id</dt>
+            <dd id="recover-meta-qub"></dd>
+            <dt>delivery</dt>
+            <dd id="recover-meta-delivery"></dd>
+            <dt>title</dt>
+            <dd id="recover-meta-title"></dd>
+            <dt>round</dt>
+            <dd id="recover-meta-round"></dd>
+            <dt>type</dt>
+            <dd id="recover-meta-type"></dd>
+            <dt>signature</dt>
+            <dd id="recover-meta-signature"></dd>
+            <dt>source</dt>
+            <dd id="recover-meta-source"></dd>
+          </dl>
+          <pre class="recover-body" id="recover-body"></pre>
+        </div>
+      </section>
+
+      <section>
+        <h2>What this is</h2>
+        <p>
+          Reference implementation of qub's recovery path in vanilla JavaScript:
+        </p>
+        <p>
+          <strong>Phase 1</strong> verifies the <code>OuterWrapper</code> unwrap
+          (AES-256-GCM with AAD bound to qub_id) via WebCrypto. Same
+          byte-for-byte test vectors that the Rust crate and the TypeScript
+          Worker compile against.
+        </p>
+        <p>
+          <strong>Phase 2</strong> verifies the inner <code>tlock</code>
+          decrypt (BLS12-381 IBE over drand quicknet) by round-tripping a
+          fixture: given a real drand round signature, the bundled tlock-js
+          recovers the plaintext from a raw age-format ciphertext.
+        </p>
+        <p>
+          <strong>Phase 3</strong> runs the unlock procedure of
+          <a href="../protocol/PROTOCOL.md">PROTOCOL.md</a> §8 end to end on
+          pinned fixtures: delivery-shape resolution (§13.8), round binding
+          (§4.3, §8 step 6a), tlock decrypt, body_hash, envelope/sealed
+          equality, and qub_id recomputation (§4.1).
+        </p>
+        <p>
+          <strong>Phase 4</strong> runs that same code against the network:
+          the stored bytes come from Arweave (multi-gateway fallback) and the
+          round signature from drand (multi-endpoint fallback).
+        </p>
+        <p>
+          <strong>Not covered here:</strong> ML-DSA-65 authorship signatures
+          (§9) and transparency-log proofs (§16). For those, export the qub's
+          <code>.qub</code> bundle and run the <code>qub-verify</code> CLI from
+          this repository, which performs the full §11 third-party
+          verification offline.
+        </p>
+        <p>
+          The point: anyone can recover qub content without depending on
+          qub.social. A third compliant implementation (alongside the Rust crate
+          and the TypeScript Worker) round-trips every layer of the protocol.
+        </p>
+      </section>
+
+      <footer>
+        <p>
+          Source ·
+          <a href="https://github.com/qubsocial/qub-public"
+            >qubsocial/qub-public</a
+          >
+        </p>
+      </footer>
+    </main>
+
+    <script type="application/json" id="wrapper-vectors">
+      {
+        "cases": [
+          {
+            "comment": "Smallest realistic SealedQub: short text body, public visibility, no optional fields. Verifies the canonical wrapper bytes for a v1.0-typical qub.",
+            "expected_wrapper_hex": "a4656e6f6e63654c020202020202020202020202667175625f69645820139632fee49870ee1d9b0946c162d5c5caadfd303e0c1cae657e5327af8c70b26776657273696f6e016a6369706865727465787459017ca0b0b83c2808a8998becaf5e6e59262ad25bcc74e2f74c1308422a5685cb4a736bd17b493e480c63379c359ffa552f12c51bdfbed234b149a828ecd3172e2af7b4e4fb94cfb9740a183b26cc991d03457916354514da5bf0e8190ecb1b16047a38372d2a5c0914f0810c272065bcba8d137deb7068db8f862338e1c540ad0a800302645fbeaa62f94da16b3c65a2c57580d946b8adbd5d1170526ae7d24163f93dd2ab52c6b0b49090e561398b213671aa37edff60dbb93b3bac57dbe9366d73562fc7c14815f84c22ac28a684c9d2ccd4f5a00dc53384936f30fe55338c980cfc252c89a03b418e993002424c799a34319fc81d1f6fb006983922cf22df84377f8b51ab467a9be5ac513e808d22fbf2ba6a67a13f5cedea14f393e42e86dfcf0eed81df745f200024cd2654368ab6e00dfcca9e4bc090e9b1c024009391c7ef6b2c2d78d773c96fb501229ef1eecf638ee1c80cc79b804f691b6b11df7535fb53da2221b232d6a625f266e9f489fcfe1214d1e2b44ee5d4ac36d737",
+            "key_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+            "name": "basic-text-public",
+            "nonce_hex": "020202020202020202020202",
+            "qub_id_hex": "139632fee49870ee1d9b0946c162d5c5caadfd303e0c1cae657e5327af8c70b2",
+            "sealed_cbor_hex": "a7667175625f69645820139632fee49870ee1d9b0946c162d5c5caadfd303e0c1cae657e5327af8c70b26776657273696f6e0169756e6c6f636b5f61741a677dc0006a7669736962696c697479016b6472616e645f726f756e641a004756d56e6472616e645f636861696e5f696478406161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616170746c6f636b5f6369706865727465787458a9a864626f64794e48656c6c6f2c206675747572652e667175625f69645820139632fee49870ee1d9b0946c162d5c5caadfd303e0c1cae657e5327af8c70b2677369675f616c67006776657273696f6e0169626f64795f68617368582076ab8b3f843c6ed4f2d0fd75b9f457b4ad49dd4450f9c22723ae430e3af3211d69756e6c6f636b5f61741a677dc0006a637265617465645f61741a677485806c636f6e74656e745f7479706501"
+          },
+          {
+            "comment": "Sealed qub with optional recipient_pubkey set (Phase 2 path). Exercises a different SealedQub key set so the inner CBOR shape is meaningfully different from the basic case.",
+            "expected_wrapper_hex": "a4656e6f6e63654c040404040404040404040404667175625f69645820426018a960451cc067035ed7d75d88f80f80df2266c2eeb03a02261486d724e66776657273696f6e016a636970686572746578745901bbe84162b8cfc16e7ac134c23e69fd59358dbce86f1d1490bfa0900811fcac8f9e4dc90ede67476e903dd4e76a48c69fffc63f1a8cb6c3a7579dbef4e3236d7faea60e03ff066f8d3c0ba1808051856df67f0b3367d3ea4643ec3bb3ea61786df11aaf92304b6a49876754f775f016ad615d8d56cb526c328bb47c86d6180dfc25647e80ef348e9c8bbf2e7a2d4a29a3fb5a77cfc84d3a213d37be637c0a6c353e26fe971edacdd8cc400039a9d5c085a18d61d550efcd2bb0d5fd1406a9fa8ff44b235bf30673628cd81e7d71a11eca40be1d6f07b7a60149aba7a8c57a51ba8abfe236a3d7cb8292343e9bb0e99fbbba2994288036feb8a242e53558bc7ab8bc1425d725a1a5382518173713d1cf4e6a605c7358e17fd6c5d9cba34bddcfa9a420fdc571c8895b19f748b9d1f4b36c964c0b441ebc68fd8ba7aed811bf2d9b9e7d5cf099d0decc144bca1f70b4ab9b3812e57cd9d6a16f9a491428dbd1639f63e082e10b5c3128e544f5abc075214708720243192de38c5a3df6542f65b23a8ce506b8c25e83dd4e3065f35e5ca9e70bca3114f65c10237083f429b0569686f191d621dc78469e2755b1161b430934d3982d5888b8e20acf182272",
+            "key_hex": "0303030303030303030303030303030303030303030303030303030303030303",
+            "name": "with-recipient-pubkey",
+            "nonce_hex": "040404040404040404040404",
+            "qub_id_hex": "426018a960451cc067035ed7d75d88f80f80df2266c2eeb03a02261486d724e6",
+            "sealed_cbor_hex": "a8667175625f69645820426018a960451cc067035ed7d75d88f80f80df2266c2eeb03a02261486d724e66776657273696f6e0169756e6c6f636b5f61741a677dc0006a7669736962696c697479016b6472616e645f726f756e641a004756d56e6472616e645f636861696e5f696478406161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616170726563697069656e745f7075626b65795820cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc70746c6f636b5f6369706865727465787458b5a864626f64795819526563697069656e742d74617267657465642064726166742e667175625f69645820426018a960451cc067035ed7d75d88f80f80df2266c2eeb03a02261486d724e6677369675f616c67006776657273696f6e0169626f64795f686173685820f4127472ed6a16cf11508a368918ba66e90408b6be3411563eec7608887b749169756e6c6f636b5f61741a677dc0006a637265617465645f61741a677485806c636f6e74656e745f7479706501"
+          },
+          {
+            "comment": "Larger plaintext body (~4 KiB) to confirm the wrapper handles non-trivial sizes correctly, especially length-prefix encoding in CBOR.",
+            "expected_wrapper_hex": "a4656e6f6e63654c060606060606060606060606667175625f696458209d23cecc29b86f86f8535441a0c47f4e6b07af1a1960198a772c961d18e24ed46776657273696f6e016a636970686572746578745911713ddd0b043bd68b69fb4d6e96d0e0890ce7163f91b2a92e69bc9e2710ea42f217f862cd9cfa7c2adb705afac77693f9c374556dff441cdff220e11e94e94228e6224a9594388c61a84f58cb2bdddf4dffa5625e68cd1232206df6f5edb4d33a85b264d0d56eaf9bbfae8e0d25a82febc338ffc270ba136fbcdfe737dfd1b804387c2e4fddc28376eda403083725148c22b9aef84a6b3b1bf30abe79ee5a722a60ffea2f3bdc9a97712cb382fbbc5743d0b1ebbf7395aed7fe347919df05c3b43f55cbb02701c211ec4a5aa2eb9ddbe992be9b6a6331057d695b92b44d179c7c550040ced43f74217e9cb4b87d4d7d0783df4ed7c77c2200bec95839b93a1dfd2ed6fd86ae7b1f3655c24661a742bea655fa566ca38626748cf367b84c2c1219de391e4336aaf98ff3f06ee85686e419a716981f08199643438de6a65f2ef567075f7b2907c3128bdc086602c6d5d3818760ba56986e9cae2609dd05372dc7dac9a6634a50892c3b107c338866c1edf2623ab7ef11025876456c680c4e58b8fee8c816aa7f9ca27c941548e50a3572fd39e606ade86d7d55c9d9885a7e3bf2a2dc611ee5d302acfd44d5534e762ec72b27ee1a2141f71a6c79ed964918b39083ffbc02dc40ff1e501f226035b5030b305a627b00bf7a60e0b29e46402af693696e8da40cd6e75904e9cf875274be3078396bc944501c462a0d7c05e2d3e3a64c9a223dae436a44ec6ea8322b2c51a03e6a524832932636a998d2254c3c1cd8912f46159a9d4721e8574d1560a94b5a9d99e2917f2d4834da1c1f435e9c1074f8b911a9a188174aec907a1ae56145cd9a782c01c4f95f9d3daf4076ad7620e3904fc3e896c3401bbe72e3064c2b0ce6fbbc3beb79896fcb8cf901278507dbb608683ffb227d4549c9677c20040734b5153273c30fc36ff89ea94b6e1dc7eb87673aac2cd958ad53245a45fd9f448305b358838787a87687189696fe95f5a371646ae0f10195522a17f9b51071a64911f817babb83c45a3d369de91b7be5e74f9e13f6b3f3be3ba8aa95de599a868296345d0f740c3c57f54060d08baa3c5c128564398cd1430aac0fe5ff96ea80cbba0f7ddc037f53cb992cf7057ed397c275f734353c7d5bed2808128fdcd7fbc52060c2e10af7c3dbf5ea905a0dd0cd3c7339f40fa29f075536ffe0a9348ab36d5cd364b1e5c2547a615cf25091b23bc929b702f8ae3b828fdc3b27dee5845d427fa76a1c09b50d447d635c88a9010c73bb4acb4d0e5b2c0c22b6e1083dfea16f4d9968822477617dab251c8e3e3178152655a89a432f0e091619fb03d150d9cf52e1b984724d11ca2857e6621c6af2868e132db8961d765e8387122b5b14ad86345c48f842dd868f84fbe41aab220d57e5af583aac0ecfa917d232523df6d786e8a499b8e17fc3c8712d63223306916c5bbe234e38cc2c46cbc0f8125e24cbbc8c6a68e12e44940a2d0878aeb5b3e905f65490ac718f4229b8c83c71226a43c62af20bd4547cecc7855f23cb6770af588109e03dde3c92fa7747a73d1bf2a900792d0040802bb4187972b711154d6c91dbbf9720b244d8590d36f3d1b408bae353930872b6cde866379c47488ab7e325acaf242c64823cb9b62536b062f4f7809f7bded2be65d0ffe631052771471fe2f3cb39841846d46f28df747f1acc3da10cf695749327309f73723490193d252495f6401db99f004c2edd983be53ea3d5fca1efd842c913b32abd699830c3671aa25572c238358e733484698ba0db91a7a532b5e2491a7b37039fa6b532497ab8830bef3ab76f817043d400ccca3cb333db2b14bee7678a4ce9453c383cd8dc66dbb8f304fdc05607238ca0c8d5d39dd420eaefbf29448e7c27b7d9e3bb2e9f15cbcf760095c855adf56e3b135372edb039e5cb4ff8934c2c07d4fd9356ea1739d04ef012a9413ae615d5535b5d3189df6bc9be8738e21ad01b080d0fe400da97210523f3a0a100ae2cc5f7e971e67a963f7cdb5782a4c7358a9b2c52e882ab9a1ab77d1679288de8f3b928eb052bca188d7a03cd3c625ee4947e1278ea8dc6d1d1c15ceb8858b138c3a64480d5c93a0bbc2473146c2ac8adb78096f91681f5b05f97954976d33474a99460f7b4cef77a6aa6146e64471a99fc3d333494f8e9748be70410a287e525c31f0ea5a256eb635c2cea945aa517b7e6dec7f821c034055a7ed5810b8c367a51449de2e8305aba9fb01aca8d96e793c9384b6969d116844cb1ad78c2555f19953139bfbc0e08ce95a546b0cab98a0355ac7139e2401b70ca2293e1c016419f7f78da9b1a3d0afd4a27542122af6241e289734e7fa7b5453e10c258d09785b3706719eff087382716fe81bfa115b4b0d4e0764749fc4a1d7a9518f513f378a4c31699a988e36a81aa17cfb41ab6dc869323ca16ae3b73a0ad6abaa6a4da6370fff7d554b0332b0abe5c98aed03fbe864d408fca16ff2a58dc41ce6579f24dbb06265f92e0322f17c1b8aff991b057f5156e61989056977d578550359fbe5ac827d3f543be597c38eabfc4c9b65091375494b1f509ef6a1fb98293279b71befa1df812d9b505a12947a83a8b9b131e57777eb548affb246a165f89304618b7fa219ccb280132435e8ce1aa844c7522339b13ff9887a025fbebec8657400e16b85d24109210798ab6f982d5acfb048b1703b7d3e89fdf503d947bd8df5d289bd2346a48354763e5e56abe721333daf886e23e9d3d0e66c0c0964bed78fbb471c6e72f820dfb1c060c7f44d9d777d736d99e172df4306dbeec67ad4ad5a763886a3ded482d3281e316370b5bd85ea57c554a0603a2ea0da9a58f46741812f047789e42b0c64d47c9ccca4dba60abe5f1f4023650b3b750f99e105f6d801f3adf7ff8f10700fadb95e82438856fafe3edcd13f669102c5124e6885daf9eb5d3c3cfe883d2faaa5e3b6aa2084702ba23b3fb8e90e20b0f224ea5cce734d6571fccf9cd59ab1d84e2e1385a4742b899b0ac91d382c7cf92136eb4c819764294428d7447f98f0739d7a23b36edf55984b3dbf18c874dc458645e4e88ea59a5ac4a3f1692eadc85ebe6771355e25b52a9e7871341aa6ca1a415d85ec90b73ff9552de634e7726d3dab1d22966fcd1b3e5dac69f1d124119900f28f6d813c121c7e7a1193f95721aa75ff45116b238efb7d56b065d3c212596464a988756ba3addbf0e06c376f10983e5ac7d61a807dcb609f80d82ca632dfc7459b07989e5f5fcba7e629125ebcac731dd865a4cc8b37d563e710d013b9a6c31ffc753b1003e36a61e32a5029407fe3fd056fcc2294392557f6dfe43fe7cd428f8f2ee7dc4a69b40a3398f7bc09498d1f7c44fc8220f3d4086782cf0e081326076027eb3eb1bcd6a056aa13a5ad1c7c0b9a54f66c144ca2c288fc9b42286b2814743f5ecd2526db49051581c05757310e0d17f5d5b49f01101e8d578777787d13ef27b2620482632eb4c09e1f13e2b5f16fc14a27b40ff5588fe8b1399d86a4b8b8b08264be116e210b8adde925f47da11e906a3239a513206f62b4afd97f51c8f24771b6f35f77723999f7fdbf9d2d7a181c5be005657b577c0f8abe30ac9e52c40caf3eec6f270eba57a802b91f2540c59e467ea8ae6edcfc5e49f582eece2ec6d6b6b4412f93f7a4f6c8e10bf71178fc4bde30bc0412e8dde4d78552e37a8e978ec9173533d65cb59a2fbeb55db290d351c4b057cb24cb70596f9126204525e08356ff87fe62583fac5cdf8b7f24bbaf79d8e08faa1012dee8c21903a8d3182a8dbf4fb6127b1fcdacf921e550e617c0774629fc9a59cded4eb7542f4070b3975704f242d8bb638c51ed4571b8e251a7c9c44f67059378e52877101939bdb0b7a49061a360d162e1c3cdfb8478dc071044920aac233172433eff1292a5b8f2ef82e67b388061a08fe062504e1b8b779431f8c0d51d35410c996fb22bd5aa4b1feeb709aa40e39c70ff5fd132d027de9cf2382b6373e884a12724a193b91b97370eabb943f273db57c791a2439e5f735a5944db3127573a5a35027ea46cd45973f7b8bd5f712d6859855a3d978553bc55245d1bd334d3904a5778ded946eafb651e9a4d3d367adf0d0feb8f10a3dfe0c62e53937ef99ca845614058d0741c41d8828d20cf68f93982576d95ce383ff5fc28467966e71f802543ba5c0d3a671ac983425940b36a20dc59b11c656ec7e34cdb89c9ca0449cc174e3c4fc7536a975838c5a2afb84377f39caa5220bb17a7aee4cfe1325bab12540b9f09afb54f9e3e0c15fb2d0d483a93fc57b02d07fda305c050576ac0971ec04b149124b69f398a5028dbcab181f721e68088db245dd5a450d5aae216fdd252e525c29384e3c5d3539dbdc8d80894706dd2afc22f9138bfbbc0ba97f3967ab85ad7ec88afe426c62ee15648e058131a8f396e7ec2d18a46708b98594f7442f7626380e44ad006ac3e677eeb188b0f26103c4937ead70fb6676748af37d904f59adb11a14fc13c30a794de08609c41a3285590c9025f634f0998235911f8e4e552e347029e5e4fc311f4c32f9799146dcf6d12188de4b6bb506da79adfecf21e226480c807c60c4c31cb540de6765d10668e2c5a66fbbfa7b8d7af9b43474f267a5b5cae7f1d4e19c9998193cdc32c69ab14aa75881e6a5b6bcf012143fe798f4e72f4afd85a9ee4b7232fc31ac0600ec0b4e3ff52a9c21b17c391170eecd9622f03c2a66270241d6be988c9b060fdf0068f9356ef48acab8114020d1b771cf959925e5d70d07ad8e08bb9366d7a352891da48e21de5b84c71298ddb30d35bfa3e98bf208c4b466d238a7fabc63a696770b26e433d6e7e7205421545bfd30b56e3cebf7da727ef0e7ec2bf6cf13f4b7294b018ab3fcee21bf1bca048006c5fc779ab080843612a6cc7f65bde1a1bca2ea13eb12ed985d9039180d78c3f9c072bdf121404f1a01588d215bfbd30d3fd913acdf5bdb234e16af1006668ff0524d7501b872d7c6083490b1ed3e93305c8e3eee06a400f3731690847295c52049f99b67469a8af2cef80aaf80c0ae79252cfa397ebc1170235e877f1fc6a53b8de2c21b3b0b51e3d5899a6de7822a90f8e7f5ab9f609c9625003293de4da93010fcae560b1d539978960c437d5b39de6a0c4fe7e66f9dd93af252871c040fe4a79c35dd4c87f305ec930962bf5accd28c59f9d9a2eb507ca7a76f3a58faf249a8330da8762b00c702add23299e45925362113d58105f0a843060fa591744e8b35167ce3e18b227d431e13e805d8b29df3076fb281dd2138456ef7a600c05146b2cf6bd7baee6e6aa844335c9104fdb3c89e27a7194f8d9f36ee859224779b29ab45f3522fa1a2e173145b5d5896c2a12a9b3775ab0497e466b4a7f07744cca0f2be7455b89926994f13aa90c590faa50977687438cfdccfb7d104400dbbc0fee504dfcbb5ff645b65292d862cbff9ce7f3d6d96171a4b2a4a17cf74dbd6082ca7ba0ae426a3f8b13093ff01b38ee90f657461ae473253f11b2f10de8f7ca7824f216600359c0dacd3434c78feb021942281bb812cef598807a6c75c93ba91520e42b6e24323924a7f95eabcb51da4c34bc851f037957a8f5b820bfb09c38c7a0da35581477002db600f8bdaac9cd5f992b24d5c3ae018fc45909b19625dd485c3e856980e72ccb9106bf71e92ea49b8c899d1e57c977a43a30c6b29f4ccf5515167149518abab7abeee208d8072b7c2d5e782d32d1462bd80974e86d6fb8c85df26725b4190387026575df35b69d840b08a31e4cd57b68ff9fcd6939ebea228c845ee475997c9b6f2fc016565186dc3b0c8c29f41106b78efbc3962da3fb55551d170e592e9e8fb059ef2f6ceced1ed7fa06f0cb02d31470fbb51c7cddff04c47ec5457fc1d71364b3d6f60982f89c9e790d3d60a1a32c71faed0754cf60acb5a8ee310f54c9e6c61f1e48a1560e9c584dff95847405202c12e362876db0dd6bb45bddd5d7ea91f82ab33c6473c5d602c82fdaa40ddbb3ab59c88d173c99ad70c7873d34d619a284cd9b75de3ac1f87db5c64c668eeb642b2a139fe7bedb8636b725da9153a0ed49d5682561d31d5a9ee4c1b1fd22338f8edfae32360213de4c873ef61b5ced3a6e332b97db73c488c301d2610d7775c78b5ee0dbf2bf6934180c326639f1b9e5218a03dadd10fe8f4ca6bd5b412d8453fccc5a630a4df7bfed4439934122ec2f4d4c0f5ef3db40a2ffb9d1af5013153a360ca132dff667ede959adc9e774f3d36755a48e59dc495adabdfb6a795d650eea69addacff3560",
+            "key_hex": "0505050505050505050505050505050505050505050505050505050505050505",
+            "name": "longer-body",
+            "nonce_hex": "060606060606060606060606",
+            "qub_id_hex": "9d23cecc29b86f86f8535441a0c47f4e6b07af1a1960198a772c961d18e24ed4",
+            "sealed_cbor_hex": "a7667175625f696458209d23cecc29b86f86f8535441a0c47f4e6b07af1a1960198a772c961d18e24ed46776657273696f6e0169756e6c6f636b5f61741a677dc0006a7669736962696c697479016b6472616e645f726f756e641a004756d56e6472616e645f636861696e5f696478406161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616170746c6f636b5f6369706865727465787459109da864626f6479591000000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff667175625f696458209d23cecc29b86f86f8535441a0c47f4e6b07af1a1960198a772c961d18e24ed4677369675f616c67006776657273696f6e0169626f64795f686173685820eeb3b4cee65cffa2a31365e3e7c38701109cbbf44ec146e098431e87ca70ec8369756e6c6f636b5f61741a677dc0006a637265617465645f61741a677485806c636f6e74656e745f7479706501"
+          }
+        ],
+        "description": "Cross-language test vectors for OuterWrapper v1 (AES-256-GCM, AAD=qub_id, 12-byte nonce, 16-byte tag). Generated by crates/qub-core/tests/wrapper_vectors.rs in regen mode (QUB_REGEN_VECTORS=1). Consumed by both Rust and the TypeScript mirror at workers/api to lock byte-for-byte parity.",
+        "version": 1
+      }
+    </script>
+
+    <script type="application/json" id="tlock-fixture">
+      {
+        "version": 1,
+        "description": "tlock-js round-trip fixture for the qub standalone reference viewer Phase 2 self-test. Decrypt the raw (non-armored) age ciphertext using the supplied drand quicknet round signature; the recovered bytes must equal plaintext_hex.",
+        "cases": [
+          {
+            "name": "tlock-quicknet-round-28240040",
+            "round": 28240040,
+            "signature_hex": "90fb3b1848f60042036371121d94f4b1ae0eb3bd76fc7cbbdc19f510ec79678223a40b9682c69441163002c7a82d029f",
+            "randomness_hex": "f01b73af467559aef2ff9675ba73daa03a978793529bb4439ed6288522aee9a8",
+            "ciphertext_hex": "6167652d656e6372797074696f6e2e6f72672f76310a2d3e20746c6f636b20323832343030343020353264623962613730653063633066366561663738303364643037343437613166353437373733356664336636363137393262613934363030633834653937310a73307755744c5877762f4176644b486a55376b6a69672f64686d4f2b66336c622f70677a48735631644d7361754261357a674d595554425744676d532f4950740a426e3131627065795247506b5731323746476f4b6d4e70486672666a55363773727a32686c4e4d55584a5733377339624d453738503563492b4b5564554372560a51336e564b7a38315a517568734b5565736a415949636536594e3961704e2b7149746c5459726652306e340a2d2d2d20304476704750624f2b4f70567036643277772f3344416c594f44536f755934302b7531364947426f71794d0a23e39fbb48c4142f5d5412f850e4d8d921be477094897c54941e5c8a04e3e19e7bf74bb3ae7f78a4c4774820e3bd861cf2fe57826a42f6171a2ab60c508e29fc5cff77f65abb1cff3083345dd44c70007039",
+            "plaintext_hex": "48656c6c6f2066726f6d2071756220506861736520322073656c662d746573742028726f756e64203238323430303430292e",
+            "plaintext_utf8": "Hello from qub Phase 2 self-test (round 28240040)."
+          }
+        ]
+      }
+    </script>
+
+    <script type="application/json" id="full-pipeline-fixture">
+      {
+        "version": 2,
+        "description": "End-to-end fixture for the qub standalone reference viewer Phase 3 self-test, one case per PROTOCOL.md §13.8 delivery shape. `stored_hex` is what lands on permanent storage: an OuterWrapper for the private case (unwrap with key_hex), bare SealedQubCbor for the public case. Given those bytes and the pinned drand quicknet round signature, the viewer must resolve the delivery shape, check shape/visibility agreement and the §4.3 round binding, tlock-decrypt the envelope, verify body_hash, envelope/sealed equality, and recompute qub_id (§4.1). Cross-checked against qub-core by crates/qub-core/tests/standalone_fixture.rs.",
+        "cases": [
+          {
+            "name": "private-wrapped-round-32463608",
+            "delivery": "wrapped",
+            "key_hex": "ecf6d08fdbbeab58eaf213746633f8ca0c5d27d15934202a0a9b899a04b9021a",
+            "nonce_hex": "8912a3f74820da388088d2ca",
+            "qub_id_hex": "3e9697cdb7b6a32a267abe6414d512aebb76e244890d7a0975d09d1b1797bb28",
+            "sealed_cbor_hex": "a7667175625f696458203e9697cdb7b6a32a267abe6414d512aebb76e244890d7a0975d09d1b1797bb286776657273696f6e0169756e6c6f636b5f61741a6ab4320c6a7669736962696c697479006b6472616e645f726f756e641a01ef5af86e6472616e645f636861696e5f696478403532646239626137306530636330663665616637383033646430373434376131663534373737333566643366363631373932626139343630306338346539373170746c6f636b5f636970686572746578745902456167652d656e6372797074696f6e2e6f72672f76310a2d3e20746c6f636b20333234363336303820353264623962613730653063633066366561663738303364643037343437613166353437373733356664336636363137393262613934363030633834653937310a75646f2b395651396d3439556f3572495373754248714765616d663730634d51685877595033527966676e6c384263794d672f487861694f386a6f4c5246576b0a4365696b48534870784b364d3835385943356462594746524c6369576c7a373649546e4e54737a6f726568514143556b78554a3071726f6d4b6265486a7778580a74433858646d316d5a2f574568364a565671365172697434576a693949354739656d4f5a345576566536380a2d2d2d20773348796b54636275552b7655614a2b524348553679513644756948494174774f44616b597850436636300a4f7fb215de084551fc2bbc573d77d35ff95bf36fc68725d8ad9ed1b09ddfc6704d6f332878bd01f5fb1f69da92a0a09f85c3472c92d2560b76e467112c0951fa02062eebff1c87eebb478ea31b8ebccf921b3024efda9d6f0cf0b9c68fd97034c4386a97e38a4b11b63a72ba04b1d8afd2281767c8e22689bd42696a0d0abe3e54d0e607d36e9eb90a17d0c038bafdf32f6dfb3c54d410aa63880b379e1d119963800b873b729578e776b57180dd522b098ecf2d2e288093d3559fef7ba7e3bd6d265a36c6757e75faac30c85d22fbe1871b9974d08a5e0ca569abaeefd80bd74bac8192badc18ded7c9a9730d4aba95d7848c07cc130bb2ef9a1067a114",
+            "stored_hex": "a4656e6f6e63654c8912a3f74820da388088d2ca667175625f696458203e9697cdb7b6a32a267abe6414d512aebb76e244890d7a0975d09d1b1797bb286776657273696f6e016a636970686572746578745903194453722cb4eb705c446c73914e3a2fb87748e699e674debc681ec684b5cbb253323b2a02cbb79ce7fd5e1a3fb4a28fdf99ca02cdba144363a36f9bcc932b8eefd9a3d7211a96308d94b40cae7d0bbe59098167269ed26c71e2969a0dbc7e2e4ca2810fe6e59f4649d89f0105885abaacf72b131c2a5784d997f962b51ded2d09d1397780cf547489cd8f766e3a136d6e639f894edbed64f112cd0c9efc1c924e6bf1468b18e54c0dcbb24aec5198b825e8c173f55c90abee0768fe04fd8a7bf1e37b301ac8a715ac8dafa42ba74178ebda3ccf2ab0c4e7c1561b8aba6e8149ebf26fda0b00773955a0c80bec84831f9193928713b84f1b85c1a4c2f0589b94d65a8a6442483ece306b40f7f8e2c5306909ae3f190feb6c037101c50c3f64a5aff4e2667f07996fb1717a5d81e712dea817de69db76a72ffb91fe6bb3e082ed12a26641629085d0cf10271dba90d3616cd482f0140d8eab770a29860f9a850daa0340fd12d58450f8af6a2be53c9a14f2e080f7be272b7712c68167b8cb42e36c614d54f2c59751187acefa2b39232cdcf529e0fbdbd2ce288a13240efbe7123bc9cff4af35a0f11cf4407a58ebf54a1563c32e8670cf9005e68668b0fd246ec7a1c5552b00f5110b65b867e568a256f829900afc5986c42d942f14923c20230a6a91fbb0aca72003fed221baf3aeba136b07bbf1a1d3c02c8cce4710a6eb3f7e467f93e9159edfc2a75347cf9dfed854b59b16e93c3e45fff1f87d9487f1105fc33441212505ce24eb523d95ed7f9d2f55cabc92bb3e95bb187ba2a071166231f96bcb84594ffbd50a7179db76dea94603a1651a119187bd49ce13ac29ec6b6b2461337faba7347b8dfff8431f9eb6ea0293e08f7771097ec126a1efb7b051655cdc1e53857dd8a1db19b2fe1eac01a4839438b28ce30c9211f90dc9339c85db71a9bc7b42d73097d58c3c3c31730540c9c25cf084d3a3c0f654ec266b67255d7ca88edd7b55e41cde5c4cb6f5ad10fb2299ab955131e958d6bc70a6eea7c7f920919768846a45aa1d067d7877a36e129932afa861594c9e6cd3c99d8a0192f2fc54a82f071bbfbc700d6da7d9427ea14bdfcc19c3d8592eea",
+            "round": 32463608,
+            "signature_hex": "a2f4b0253c1022ea4d2e5b493e0061c8c6293b17f4bab94282563ee83ce8d0c67205f161989227432379637ee63e2edf",
+            "randomness_hex": "c02266491d6a8c6b1128862e1080f6acbf802b5c07022be88f392db0a2bac23c",
+            "sealed_unlock_at": 1790194188,
+            "sealed_visibility": 0,
+            "sealed_drand_chain_id": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
+            "sealed_title": null,
+            "envelope_body_hex": "71756220506861736520332073656c662d7465737420626f647920e2809420707269766174652064656c697665727920617420726f756e642033323436333630382e",
+            "envelope_body_utf8": "qub Phase 3 self-test body — private delivery at round 32463608.",
+            "envelope_body_hash_hex": "2b34b1b0ac66b0b9459c99dd98e4f52f272a321249420ef37034930bd123d847",
+            "envelope_content_type": 1,
+            "envelope_created_at": 1790194128,
+            "envelope_sig_alg": 0
+          },
+          {
+            "name": "public-bare-round-32463608",
+            "delivery": "bare",
+            "key_hex": null,
+            "nonce_hex": null,
+            "qub_id_hex": "51942340d09579841d143600b32f8b36bf0d71fdc84cc05db2d8982049b85d66",
+            "sealed_cbor_hex": "a8657469746c65745374616e64616c6f6e652073656c662d74657374667175625f6964582051942340d09579841d143600b32f8b36bf0d71fdc84cc05db2d8982049b85d666776657273696f6e0169756e6c6f636b5f61741a6ab4320c6a7669736962696c697479016b6472616e645f726f756e641a01ef5af86e6472616e645f636861696e5f696478403532646239626137306530636330663665616637383033646430373434376131663534373737333566643366363631373932626139343630306338346539373170746c6f636b5f636970686572746578745902446167652d656e6372797074696f6e2e6f72672f76310a2d3e20746c6f636b20333234363336303820353264623962613730653063633066366561663738303364643037343437613166353437373733356664336636363137393262613934363030633834653937310a736f5a7434664a7667784b3232595578375a61305344746d6258723878377942456954436232745250795061702b574373584d484e65662f72566856525347580a424934516b634b71716836674f5041466776596e53663562796471476e332b69376457446f774954715a5877713278786f77424d592f7a712b494178542b47570a3162572b416b7377327258426d3345724243424c5a31453141682f4167577669304f416962327a546530450a2d2d2d205575597252513844374f756575423153673679612b33695636414a354a5841364548627341792b6a4f79450a4fe8b649ade635a67e859bb733c7f8b0986f3e614a97d74b8eaef86dabd23f5d00eaeb648b44e8b31c556ff43aa977621faea31b56c5a4c07e1ca4b624374410b887297d838feedb8c19db69b1b08478622b90145c1ca08c8c0632a23430fb2157bf405bb885ea9a694331ff7989babed210316ec64bef5c1ebe7e6876e75ae300c023d2d1843f640162616b315088c049f04fa873cc16f194b8ec09d5d658d8c7940ec33f58e18d400e77dffca9560dc29a866651ab5445229125c9e8b9853a8e87b93232eb576fd43e01e02a4fec0c720a4cbacb3c9b831137826f7eaf1e4321eda342c80bf21d8bda2a18a8c292f33acadd90d4587b3ea838681095",
+            "stored_hex": "a8657469746c65745374616e64616c6f6e652073656c662d74657374667175625f6964582051942340d09579841d143600b32f8b36bf0d71fdc84cc05db2d8982049b85d666776657273696f6e0169756e6c6f636b5f61741a6ab4320c6a7669736962696c697479016b6472616e645f726f756e641a01ef5af86e6472616e645f636861696e5f696478403532646239626137306530636330663665616637383033646430373434376131663534373737333566643366363631373932626139343630306338346539373170746c6f636b5f636970686572746578745902446167652d656e6372797074696f6e2e6f72672f76310a2d3e20746c6f636b20333234363336303820353264623962613730653063633066366561663738303364643037343437613166353437373733356664336636363137393262613934363030633834653937310a736f5a7434664a7667784b3232595578375a61305344746d6258723878377942456954436232745250795061702b574373584d484e65662f72566856525347580a424934516b634b71716836674f5041466776596e53663562796471476e332b69376457446f774954715a5877713278786f77424d592f7a712b494178542b47570a3162572b416b7377327258426d3345724243424c5a31453141682f4167577669304f416962327a546530450a2d2d2d205575597252513844374f756575423153673679612b33695636414a354a5841364548627341792b6a4f79450a4fe8b649ade635a67e859bb733c7f8b0986f3e614a97d74b8eaef86dabd23f5d00eaeb648b44e8b31c556ff43aa977621faea31b56c5a4c07e1ca4b624374410b887297d838feedb8c19db69b1b08478622b90145c1ca08c8c0632a23430fb2157bf405bb885ea9a694331ff7989babed210316ec64bef5c1ebe7e6876e75ae300c023d2d1843f640162616b315088c049f04fa873cc16f194b8ec09d5d658d8c7940ec33f58e18d400e77dffca9560dc29a866651ab5445229125c9e8b9853a8e87b93232eb576fd43e01e02a4fec0c720a4cbacb3c9b831137826f7eaf1e4321eda342c80bf21d8bda2a18a8c292f33acadd90d4587b3ea838681095",
+            "round": 32463608,
+            "signature_hex": "a2f4b0253c1022ea4d2e5b493e0061c8c6293b17f4bab94282563ee83ce8d0c67205f161989227432379637ee63e2edf",
+            "randomness_hex": "c02266491d6a8c6b1128862e1080f6acbf802b5c07022be88f392db0a2bac23c",
+            "sealed_unlock_at": 1790194188,
+            "sealed_visibility": 1,
+            "sealed_drand_chain_id": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
+            "sealed_title": "Standalone self-test",
+            "envelope_body_hex": "71756220506861736520332073656c662d7465737420626f647920e28094207075626c69632064656c697665727920617420726f756e642033323436333630382e",
+            "envelope_body_utf8": "qub Phase 3 self-test body — public delivery at round 32463608.",
+            "envelope_body_hash_hex": "6d84f5c61f5a9a436dfd77871aac3ae358f3881240e7526483fe7a69e2266e9d",
+            "envelope_content_type": 1,
+            "envelope_created_at": 1790194128,
+            "envelope_sig_alg": 0
+          }
+        ]
+      }
+    </script>
+
+    <script src="./lib/tlock-bundle.js"></script>
+
+    <script>
+      (() => {
+        "use strict";
+
+        // ------- hex helpers -------
+        function hexToBytes(hex) {
+          if (typeof hex !== "string" || hex.length % 2 !== 0) {
+            throw new Error("hex: invalid input");
+          }
+          const out = new Uint8Array(hex.length >>> 1);
+          for (let i = 0; i < out.length; i++) {
+            const b = parseInt(hex.substr(i << 1, 2), 16);
+            if (Number.isNaN(b)) throw new Error("hex: non-hex character");
+            out[i] = b;
+          }
+          return out;
+        }
+        function bytesToHex(bytes) {
+          let s = "";
+          for (let i = 0; i < bytes.length; i++) {
+            s += bytes[i].toString(16).padStart(2, "0");
+          }
+          return s;
+        }
+        function bytesToBase64(bytes) {
+          let bin = "";
+          for (let i = 0; i < bytes.length; i++) {
+            bin += String.fromCharCode(bytes[i]);
+          }
+          return btoa(bin);
+        }
+
+        // ------- minimal canonical CBOR decoder -------
+        // Handles only what OuterWrapper needs: positive ints (up to u32),
+        // text strings, byte strings, definite-length maps. Indefinite-
+        // length sequences are rejected — qub uses canonical encoding.
+        function decodeCbor(bytes) {
+          let p = 0;
+          function readByte() {
+            if (p >= bytes.length) throw new Error("cbor: unexpected eof");
+            return bytes[p++];
+          }
+          function readArg(arg) {
+            if (arg < 24) return arg;
+            if (arg === 24) return readByte();
+            if (arg === 25) return (readByte() << 8) | readByte();
+            if (arg === 26) {
+              const a = readByte(),
+                b = readByte(),
+                c = readByte(),
+                d = readByte();
+              return a * 0x1000000 + ((b << 16) | (c << 8) | d);
+            }
+            throw new Error("cbor: u64 args unsupported");
+          }
+          function readBytes(n) {
+            if (p + n > bytes.length) throw new Error("cbor: truncated");
+            const out = bytes.subarray(p, p + n);
+            p += n;
+            return out;
+          }
+          function decode() {
+            const initial = readByte();
+            const major = initial >> 5;
+            const arg = initial & 0x1f;
+            if (arg === 31)
+              throw new Error("cbor: indefinite length not allowed");
+            const val = readArg(arg);
+            if (major === 0) return val;
+            if (major === 2) return readBytes(val);
+            if (major === 3)
+              return new TextDecoder("utf-8", { fatal: true }).decode(
+                readBytes(val),
+              );
+            if (major === 5) {
+              const m = Object.create(null);
+              for (let i = 0; i < val; i++) {
+                const k = decode();
+                if (typeof k !== "string")
+                  throw new Error("cbor: non-text map key");
+                m[k] = decode();
+              }
+              return m;
+            }
+            throw new Error("cbor: unsupported major type " + major);
+          }
+          const result = decode();
+          if (p !== bytes.length)
+            throw new Error(
+              "cbor: " + (bytes.length - p) + " trailing byte(s)",
+            );
+          return result;
+        }
+
+        // ------- Phase 1 — OuterWrapper unwrap -------
+        async function unwrapOuterWrapper(wrapperBytes, keyBytes) {
+          const w = decodeCbor(wrapperBytes);
+          if (w.version !== 1)
+            throw new Error("wrapper: unsupported version " + w.version);
+          if (!(w.qub_id instanceof Uint8Array) || w.qub_id.length !== 32) {
+            throw new Error("wrapper: qub_id must be 32 bytes");
+          }
+          if (!(w.nonce instanceof Uint8Array) || w.nonce.length !== 12) {
+            throw new Error("wrapper: nonce must be 12 bytes");
+          }
+          if (!(w.ciphertext instanceof Uint8Array)) {
+            throw new Error("wrapper: ciphertext missing");
+          }
+          const cryptoKey = await crypto.subtle.importKey(
+            "raw",
+            keyBytes,
+            "AES-GCM",
+            false,
+            ["decrypt"],
+          );
+          const sealed = await crypto.subtle.decrypt(
+            {
+              name: "AES-GCM",
+              iv: w.nonce,
+              additionalData: w.qub_id,
+              tagLength: 128,
+            },
+            cryptoKey,
+            w.ciphertext,
+          );
+          return new Uint8Array(sealed);
+        }
+
+        // ------- Phase 2 — tlock decrypt -------
+        // The bundled tlock-js expects an armored age payload. The Rust
+        // tlock_age crate produces raw (non-armored) bytes; we re-armor
+        // here (matches the same trick in workers/api/src/crypto/tlock.ts).
+        function armorAge(rawBytes) {
+          const b64 = bytesToBase64(rawBytes);
+          const lines = [];
+          for (let i = 0; i < b64.length; i += 64) {
+            lines.push(b64.slice(i, i + 64));
+          }
+          return (
+            "-----BEGIN AGE ENCRYPTED FILE-----\n" +
+            lines.join("\n") +
+            "\n-----END AGE ENCRYPTED FILE-----\n"
+          );
+        }
+
+        // drand quicknet chain info — pinned constants identical to
+        // workers/api/src/crypto/drand.ts. The standalone never validates
+        // the public key against an external source; the value here is
+        // the recovery anchor.
+        const QUICKNET_CHAIN_INFO = Object.freeze({
+          public_key:
+            "83cf0f2896adee7eb8b5f01fcad3912212c437e0073e911fb90022d3e760183c" +
+            "8c4b450b6a0a6c3ac6a5776a2d1064510d1fec758c921cc22b0e17e63aaf4bcb" +
+            "5ed66304de9cf809bd274ca73bab4af5a6e9c76a4bc09e76eae8991ef5ece45a",
+          period: 3,
+          genesis_time: 1692803367,
+          hash: "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
+          groupHash: "",
+          schemeID: "bls-unchained-g1-rfc9380",
+          metadata: { beaconID: "quicknet" },
+        });
+
+        // tlock-js wants a ChainClient. For decryption we supply a stub
+        // that returns a pre-fetched beacon (matches the Worker's
+        // PreloadedBeaconClient pattern in tlock.ts).
+        class QuicknetChainStub {
+          constructor() {
+            this.baseUrl = "https://api.drand.sh/" + QUICKNET_CHAIN_INFO.hash;
+          }
+          async info() {
+            return QUICKNET_CHAIN_INFO;
+          }
+        }
+        class PreloadedBeaconClient {
+          constructor(round, signatureHex, randomnessHex) {
+            this.options = { disableBeaconVerification: false, noCache: true };
+            this._beacon = {
+              round,
+              signature: signatureHex,
+              randomness: randomnessHex,
+            };
+          }
+          chain() {
+            return new QuicknetChainStub();
+          }
+          async latest() {
+            return this._beacon;
+          }
+          async get(_round) {
+            return this._beacon;
+          }
+        }
+
+        async function tlockDecryptCase(c) {
+          if (!globalThis.qubTlock || !globalThis.qubTlock.timelockDecrypt) {
+            throw new Error("tlock-js bundle did not load");
+          }
+          const ciphertextBytes = hexToBytes(c.ciphertext_hex);
+          const armored = armorAge(ciphertextBytes);
+          const client = new PreloadedBeaconClient(
+            c.round,
+            c.signature_hex,
+            c.randomness_hex,
+          );
+          const result = await globalThis.qubTlock.timelockDecrypt(
+            armored,
+            client,
+          );
+          return new Uint8Array(result);
+        }
+
+        // ------- self-test runners -------
+        async function runWrapperSelfTest() {
+          const tbody = document.getElementById("wrapper-results");
+          const vectors = JSON.parse(
+            document.getElementById("wrapper-vectors").textContent,
+          );
+          const results = [];
+          for (const c of vectors.cases) {
+            const wrapperBytes = hexToBytes(c.expected_wrapper_hex);
+            try {
+              const got = await unwrapOuterWrapper(
+                wrapperBytes,
+                hexToBytes(c.key_hex),
+              );
+              const ok = bytesToHex(got) === c.sealed_cbor_hex;
+              results.push({
+                name: c.name,
+                meta: wrapperBytes.length + " B",
+                ok,
+                error: ok
+                  ? null
+                  : "recovered bytes differ from expected SealedQubCbor",
+              });
+            } catch (e) {
+              results.push({
+                name: c.name,
+                meta: wrapperBytes.length + " B",
+                ok: false,
+                error: String((e && e.message) || e),
+              });
+            }
+          }
+          renderResults(tbody, results);
+          return results;
+        }
+
+        async function runTlockSelfTest() {
+          const tbody = document.getElementById("tlock-results");
+          const fixture = JSON.parse(
+            document.getElementById("tlock-fixture").textContent,
+          );
+          const results = [];
+          for (const c of fixture.cases) {
+            try {
+              const got = await tlockDecryptCase(c);
+              const ok = bytesToHex(got) === c.plaintext_hex;
+              results.push({
+                name: c.name,
+                meta: String(c.round),
+                ok,
+                error: ok
+                  ? null
+                  : "recovered bytes differ from expected plaintext",
+              });
+            } catch (e) {
+              results.push({
+                name: c.name,
+                meta: String(c.round),
+                ok: false,
+                error: String((e && e.message) || e),
+              });
+            }
+          }
+          renderResults(tbody, results);
+          return results;
+        }
+
+        // ------- Recovery core (PROTOCOL.md §8 / §11) -------
+        // One implementation of the unlock procedure, shared by the
+        // Phase 3 self-test and the Phase 4 recover-by-URL form, so the
+        // path the self-test proves is the path a live qub takes.
+        const VISIBILITY_PRIVATE = 0;
+        const VISIBILITY_PUBLIC = 1;
+        const OUTER_WRAPPER_KEYS = "ciphertext,nonce,qub_id,version";
+        // §4.1 domain separator: ASCII "QUB_ID_V2" + one 0x00 byte.
+        const QUB_ID_DOMAIN_SEPARATOR = new Uint8Array([
+          0x51, 0x55, 0x42, 0x5f, 0x49, 0x44, 0x5f, 0x56, 0x32, 0x00,
+        ]);
+
+        function bytesEqual(a, b) {
+          if (!(a instanceof Uint8Array) || !(b instanceof Uint8Array))
+            return false;
+          if (a.length !== b.length) return false;
+          let diff = 0;
+          for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+          return diff === 0;
+        }
+
+        function sha3(bytes) {
+          if (!globalThis.qubTlock || !globalThis.qubTlock.sha3_256) {
+            throw new Error("sha3_256 missing from tlock-js bundle");
+          }
+          return globalThis.qubTlock.sha3_256(bytes);
+        }
+
+        function isOuterWrapper(value) {
+          return (
+            value !== null &&
+            typeof value === "object" &&
+            !(value instanceof Uint8Array) &&
+            Object.keys(value).sort().join(",") === OUTER_WRAPPER_KEYS
+          );
+        }
+
+        // §8 step 3a + §13.8: resolve the delivery shape STRUCTURALLY and
+        // require it to agree with the inner visibility. Wrapped bytes
+        // must be private and need the fragment key; bare bytes must be
+        // public and need none.
+        async function resolveDelivery(storedBytes, key) {
+          let top;
+          try {
+            top = decodeCbor(storedBytes);
+          } catch (e) {
+            throw new Error(
+              "stored bytes are neither an OuterWrapper nor a SealedQub (" +
+                e.message +
+                ")",
+            );
+          }
+          if (isOuterWrapper(top)) {
+            if (!key) {
+              throw new Error(
+                "this qub is private (wrapped): its link must carry the key after #",
+              );
+            }
+            let sealedBytes;
+            try {
+              sealedBytes = await unwrapOuterWrapper(storedBytes, key);
+            } catch (e) {
+              // §13.5: every AEAD failure collapses to one error shape.
+              if (e && e.name === "OperationError") {
+                throw new Error(
+                  "decrypt failed: wrong key for this qub, or the stored bytes were altered",
+                );
+              }
+              throw e;
+            }
+            const sealed = decodeCbor(sealedBytes);
+            if (!bytesEqual(sealed.qub_id, top.qub_id)) {
+              throw new Error("wrapper qub_id does not match the inner SealedQub");
+            }
+            if (sealed.visibility !== VISIBILITY_PRIVATE) {
+              throw new Error(
+                "delivery shape mismatch: wrapped bytes carry a non-private SealedQub",
+              );
+            }
+            return { sealed, delivery: "private (wrapped)" };
+          }
+          if (top.visibility !== VISIBILITY_PUBLIC) {
+            throw new Error(
+              "delivery shape mismatch: bare bytes carry a non-public SealedQub",
+            );
+          }
+          return { sealed: top, delivery: "public (bare)" };
+        }
+
+        // The round in the tlock ciphertext's age stanza header
+        // ("-> tlock <round> <chain_hash>") is the one that actually gates
+        // decryption. Read it without any signature (§8 step 6a).
+        function stanzaRound(ciphertext) {
+          const head = new TextDecoder("latin1").decode(
+            ciphertext.subarray(0, Math.min(ciphertext.length, 512)),
+          );
+          const m = head.match(/\n-> tlock (\d+) ([0-9a-f]{64})\n/);
+          if (!m) throw new Error("tlock ciphertext has no tlock stanza");
+          return { round: Number(m[1]), chainHash: m[2] };
+        }
+
+        // §8 steps 4–6a: structural checks + the round binding, all
+        // before any network access or decryption.
+        function validateSealed(sealed) {
+          if (sealed.version !== 1) {
+            throw new Error("unsupported SealedQub version " + sealed.version);
+          }
+          if (!(sealed.qub_id instanceof Uint8Array) || sealed.qub_id.length !== 32) {
+            throw new Error("SealedQub qub_id must be 32 bytes");
+          }
+          if (!(sealed.tlock_ciphertext instanceof Uint8Array)) {
+            throw new Error("SealedQub tlock_ciphertext missing");
+          }
+          if (
+            sealed.drand_chain_id !== QUICKNET_CHAIN_INFO.hash ||
+            (sealed.drand_chain_version !== undefined &&
+              sealed.drand_chain_version !== 0)
+          ) {
+            throw new Error(
+              "unsupported drand chain " +
+                sealed.drand_chain_id +
+                " — this viewer pins quicknet only",
+            );
+          }
+          if (!Number.isSafeInteger(sealed.unlock_at)) {
+            throw new Error("SealedQub unlock_at is not an integer");
+          }
+          // §4.3: round = floor((unlock_at - genesis) / period) + 1; the
+          // legacy pre-release mapping (one less) is still accepted.
+          const expected =
+            Math.floor(
+              (sealed.unlock_at - QUICKNET_CHAIN_INFO.genesis_time) /
+                QUICKNET_CHAIN_INFO.period,
+            ) + 1;
+          if (
+            sealed.drand_round !== expected &&
+            sealed.drand_round !== expected - 1
+          ) {
+            throw new Error(
+              "round binding: drand_round " +
+                sealed.drand_round +
+                " does not match unlock_at (expected " +
+                expected +
+                ")",
+            );
+          }
+          const stanza = stanzaRound(sealed.tlock_ciphertext);
+          if (
+            stanza.round !== sealed.drand_round ||
+            stanza.chainHash !== sealed.drand_chain_id
+          ) {
+            throw new Error(
+              "round binding: ciphertext is locked to round " +
+                stanza.round +
+                ", not the declared " +
+                sealed.drand_round,
+            );
+          }
+        }
+
+        // §4.1 — recompute qub_id from the decrypted envelope, the sealed
+        // drand_round, and the sealed title.
+        function computeQubId(envelope, sealed) {
+          const preimage = new Uint8Array(108);
+          const view = new DataView(preimage.buffer);
+          let off = 0;
+          preimage.set(QUB_ID_DOMAIN_SEPARATOR, off);
+          off += QUB_ID_DOMAIN_SEPARATOR.length;
+          preimage[off++] = envelope.version;
+          preimage[off++] = envelope.content_type;
+          view.setBigInt64(off, BigInt(envelope.created_at), false);
+          off += 8;
+          view.setBigInt64(off, BigInt(envelope.unlock_at), false);
+          off += 8;
+          view.setBigInt64(off, BigInt(envelope.outcome_at ?? 0), false);
+          off += 8;
+          view.setBigUint64(off, BigInt(sealed.drand_round), false);
+          off += 8;
+          preimage.set(envelope.body_hash, off);
+          off += 32;
+          if (sealed.title !== undefined) {
+            preimage.set(
+              sha3(new TextEncoder().encode(sealed.title.normalize("NFC"))),
+              off,
+            );
+          }
+          return sha3(preimage);
+        }
+
+        // §8 steps 7–12a + §11 step 10: decrypt with the round signature
+        // and verify everything that binds the envelope to the sealed
+        // layer. A wrong signature cannot decrypt at all — the signature
+        // IS the IBE decryption key — so a forged beacon fails here
+        // rather than yielding wrong plaintext.
+        async function openEnvelope(sealed, signatureHex, randomnessHex) {
+          const client = new PreloadedBeaconClient(
+            sealed.drand_round,
+            signatureHex,
+            randomnessHex,
+          );
+          const envelopeBytes = new Uint8Array(
+            await globalThis.qubTlock.timelockDecrypt(
+              armorAge(sealed.tlock_ciphertext),
+              client,
+            ),
+          );
+          const envelope = decodeCbor(envelopeBytes);
+          if (envelope.version !== 1) {
+            throw new Error("unsupported QubEnvelope version " + envelope.version);
+          }
+          if (!bytesEqual(sha3(envelope.body), envelope.body_hash)) {
+            throw new Error(
+              "body_hash mismatch — content does not match its commitment",
+            );
+          }
+          if (!bytesEqual(envelope.qub_id, sealed.qub_id)) {
+            throw new Error("qub_id mismatch between envelope and sealed layer");
+          }
+          if (envelope.unlock_at !== sealed.unlock_at) {
+            throw new Error("unlock_at mismatch between envelope and sealed layer");
+          }
+          if (envelope.outcome_at !== sealed.outcome_at) {
+            throw new Error("outcome_at mismatch between envelope and sealed layer");
+          }
+          if (!bytesEqual(computeQubId(envelope, sealed), sealed.qub_id)) {
+            throw new Error(
+              "qub_id does not match its §4.1 preimage — metadata was altered",
+            );
+          }
+          return envelope;
+        }
+
+        function signatureLabel(envelope) {
+          if (envelope.sig_alg === 0) return "unsigned";
+          const who = envelope.cosigner_pubkey ? "author + cosigner" : "author";
+          return (
+            "ML-DSA-65 (" +
+            who +
+            ") — present but NOT verified by this page; run qub-verify"
+          );
+        }
+
+        // ------- Phase 3 — full pipeline -------
+        // The recovery core above, fed the pinned fixture instead of the
+        // network: resolve delivery → validate → tlock-decrypt → verify.
+        // Every intermediate value is also checked against the fixture.
+        async function fullPipelineCase(c) {
+          const key = c.key_hex ? hexToBytes(c.key_hex) : null;
+          const { sealed } = await resolveDelivery(hexToBytes(c.stored_hex), key);
+          validateSealed(sealed);
+          if (bytesToHex(sealed.qub_id) !== c.qub_id_hex) {
+            throw new Error("sealed: qub_id differs from fixture");
+          }
+          if (sealed.visibility !== c.sealed_visibility) {
+            throw new Error("sealed: visibility differs from fixture");
+          }
+          if ((sealed.title ?? null) !== c.sealed_title) {
+            throw new Error("sealed: title differs from fixture");
+          }
+          const envelope = await openEnvelope(
+            sealed,
+            c.signature_hex,
+            c.randomness_hex,
+          );
+          if (bytesToHex(envelope.body) !== c.envelope_body_hex) {
+            throw new Error("body: recovered bytes differ from fixture");
+          }
+          if (
+            envelope.content_type !== c.envelope_content_type ||
+            envelope.sig_alg !== c.envelope_sig_alg ||
+            envelope.created_at !== c.envelope_created_at
+          ) {
+            throw new Error("envelope: metadata differs from fixture");
+          }
+          return new TextDecoder("utf-8", { fatal: true }).decode(envelope.body);
+        }
+
+        // Negative cases: each MUST be refused. Derived from the fixture,
+        // so they stay valid whenever it is regenerated.
+        function refusalCases(cases) {
+          const priv = cases.find((c) => c.delivery === "wrapped");
+          const pub = cases.find((c) => c.delivery === "bare");
+          const out = [];
+          if (priv) {
+            out.push({
+              name: "refuse: private qub without its key",
+              run: () => resolveDelivery(hexToBytes(priv.stored_hex), null),
+            });
+            out.push({
+              name: "refuse: private qub with the wrong key",
+              run: () => {
+                const k = hexToBytes(priv.key_hex);
+                k[0] ^= 0x01;
+                return resolveDelivery(hexToBytes(priv.stored_hex), k);
+              },
+            });
+            out.push({
+              name: "refuse: private SealedQub delivered bare",
+              run: () => resolveDelivery(hexToBytes(priv.sealed_cbor_hex), null),
+            });
+          }
+          if (pub) {
+            out.push({
+              name: "refuse: round rebinding",
+              run: async () => {
+                const { sealed } = await resolveDelivery(
+                  hexToBytes(pub.stored_hex),
+                  null,
+                );
+                sealed.drand_round -= 1000;
+                validateSealed(sealed);
+              },
+            });
+            out.push({
+              name: "refuse: swapped title",
+              run: async () => {
+                const { sealed } = await resolveDelivery(
+                  hexToBytes(pub.stored_hex),
+                  null,
+                );
+                sealed.title = "A different title";
+                await openEnvelope(sealed, pub.signature_hex, pub.randomness_hex);
+              },
+            });
+          }
+          return out;
+        }
+
+        async function runFullPipelineSelfTest() {
+          const tbody = document.getElementById("full-pipeline-results");
+          const fixture = JSON.parse(
+            document.getElementById("full-pipeline-fixture").textContent,
+          );
+          const results = [];
+          let recoveredBody = null;
+          for (const c of fixture.cases) {
+            try {
+              recoveredBody = await fullPipelineCase(c);
+              results.push({ name: c.name, meta: c.delivery, ok: true, error: null });
+            } catch (e) {
+              results.push({
+                name: c.name,
+                meta: c.delivery,
+                ok: false,
+                error: String((e && e.message) || e),
+              });
+            }
+          }
+          for (const r of refusalCases(fixture.cases)) {
+            try {
+              await r.run();
+              results.push({
+                name: r.name,
+                meta: "must fail",
+                ok: false,
+                error: "accepted input that the protocol requires refusing",
+              });
+            } catch (e) {
+              results.push({
+                name: r.name,
+                meta: String((e && e.message) || e),
+                ok: true,
+                error: null,
+              });
+            }
+          }
+          renderResults(tbody, results);
+          // Surface the recovered body for visual verification — only
+          // when every check passed.
+          if (recoveredBody !== null && results.every((r) => r.ok)) {
+            const wrap = document.getElementById("full-pipeline-recovered");
+            const code = document.getElementById("full-pipeline-body");
+            code.textContent = recoveredBody;
+            wrap.hidden = false;
+          }
+          return results;
+        }
+
+        function renderResults(tbody, results) {
+          tbody.replaceChildren();
+          for (const r of results) {
+            const tr = document.createElement("tr");
+            const nameCell = document.createElement("td");
+            nameCell.textContent = r.name;
+            const metaCell = document.createElement("td");
+            metaCell.className = "meta";
+            metaCell.textContent = r.meta;
+            const statusCell = document.createElement("td");
+            if (r.ok) {
+              statusCell.className = "status-ok";
+              statusCell.textContent = "✓ pass";
+            } else {
+              statusCell.className = "status-fail";
+              const label = document.createElement("div");
+              label.textContent = "✗ fail";
+              const detail = document.createElement("div");
+              detail.className = "error-detail";
+              detail.textContent = r.error;
+              statusCell.append(label, detail);
+            }
+            tr.append(nameCell, metaCell, statusCell);
+            tbody.append(tr);
+          }
+        }
+
+        // ------- Phase 4 — recover by URL -------
+        // Endpoints mirror the production lists in
+        // crates/qub-app/src/fetch/arweave.rs and
+        // workers/api/src/crypto/drand.ts. /raw/<tx_id> avoids the
+        // ArNS subdomain redirect whose cache can lag tx confirmation.
+        const ARWEAVE_GATEWAYS = [
+          "https://arweave.net",
+          "https://ar-io.dev",
+          "https://permagate.io",
+        ];
+        const DRAND_ENDPOINTS = [
+          "https://drand.cloudflare.com",
+          "https://api.drand.sh",
+          "https://api2.drand.sh",
+          "https://api3.drand.sh",
+        ];
+
+        function base64urlToBytes(s) {
+          const padded =
+            s.replace(/-/g, "+").replace(/_/g, "/") +
+            "=".repeat((4 - (s.length % 4)) % 4);
+          let bin;
+          try {
+            bin = atob(padded);
+          } catch {
+            throw new Error("fragment is not valid base64url");
+          }
+          const out = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+          return out;
+        }
+
+        // Accepts a full delivery URL on ANY origin (the host is not
+        // trusted and not needed), or a bare 43-character tx_id. The key
+        // is the bare base64url fragment (§13.6); a legacy `k=` prefix is
+        // tolerated. No fragment is valid: public qubs carry no key.
+        function parseQubUrl(input) {
+          const trimmed = String(input || "").trim();
+          if (!trimmed) throw new Error("URL is empty");
+          if (/^[A-Za-z0-9_-]{43}$/.test(trimmed)) {
+            return { tx_id: trimmed, key: null };
+          }
+          let url;
+          try {
+            url = new URL(trimmed);
+          } catch {
+            throw new Error("not a valid URL or tx_id");
+          }
+          // Short codes (/s/<short>) need a server-side lookup the
+          // standalone deliberately doesn't have.
+          const m = url.pathname.match(/\/c\/([A-Za-z0-9_-]{43})\/?$/);
+          if (!m) {
+            if (/\/s\//.test(url.pathname)) {
+              throw new Error(
+                "short codes (/s/) aren't supported — paste the /c/<tx_id> form instead",
+              );
+            }
+            throw new Error("URL path doesn't look like /c/<43-char-tx_id>");
+          }
+          const tx_id = m[1];
+          const fragment = url.hash.replace(/^#/, "").replace(/^k=/, "");
+          if (!fragment) return { tx_id, key: null };
+          const key = base64urlToBytes(fragment);
+          if (key.length !== 32) {
+            throw new Error(
+              "fragment doesn't decode to a 32-byte AES-256 key (got " +
+                key.length +
+                " bytes)",
+            );
+          }
+          return { tx_id, key };
+        }
+
+        async function fetchArweaveBytes(tx_id, onProgress) {
+          const errors = [];
+          for (let i = 0; i < ARWEAVE_GATEWAYS.length; i++) {
+            const gateway = ARWEAVE_GATEWAYS[i];
+            if (onProgress) onProgress(`fetching from ${gateway}…`);
+            try {
+              const res = await fetch(`${gateway}/raw/${tx_id}`);
+              if (!res.ok) {
+                errors.push(`${gateway}: HTTP ${res.status}`);
+                continue;
+              }
+              const buf = await res.arrayBuffer();
+              return { bytes: new Uint8Array(buf), source: gateway };
+            } catch (e) {
+              errors.push(`${gateway}: ${(e && e.message) || e}`);
+            }
+          }
+          throw new Error("all Arweave gateways failed: " + errors.join("; "));
+        }
+
+        async function fetchDrandBeacon(round, chainHash, onProgress) {
+          const errors = [];
+          for (const endpoint of DRAND_ENDPOINTS) {
+            if (onProgress) onProgress(`fetching drand from ${endpoint}…`);
+            try {
+              const res = await fetch(
+                `${endpoint}/${chainHash}/public/${round}`,
+              );
+              if (!res.ok) {
+                errors.push(`${endpoint}: HTTP ${res.status}`);
+                continue;
+              }
+              const j = await res.json();
+              if (
+                !j ||
+                typeof j.signature !== "string" ||
+                typeof j.randomness !== "string" ||
+                Number(j.round) !== round
+              ) {
+                errors.push(`${endpoint}: malformed beacon response`);
+                continue;
+              }
+              return { ...j, source: endpoint };
+            } catch (e) {
+              errors.push(`${endpoint}: ${(e && e.message) || e}`);
+            }
+          }
+          throw new Error("all drand endpoints failed: " + errors.join("; "));
+        }
+
+        function formatDuration(seconds) {
+          if (seconds <= 0) return "now";
+          const days = Math.floor(seconds / 86400);
+          const hours = Math.floor((seconds % 86400) / 3600);
+          const minutes = Math.floor((seconds % 3600) / 60);
+          if (days > 0) return `${days}d ${hours}h`;
+          if (hours > 0) return `${hours}h ${minutes}m`;
+          if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+          return `${seconds}s`;
+        }
+
+        function setRecoverStatus(text, state) {
+          const el = document.getElementById("recover-status");
+          el.textContent = text;
+          if (state) {
+            el.dataset.state = state;
+          } else {
+            delete el.dataset.state;
+          }
+          // Mirror to documentElement for headless test runners.
+          document.documentElement.dataset.recoverStatus = state || "running";
+          document.documentElement.dataset.recoverMessage = text;
+        }
+
+        function showRecoverOutput(fields, bodyText) {
+          const set = (id, v) => {
+            const dd = document.getElementById(id);
+            dd.textContent = v ?? "—";
+          };
+          set("recover-meta-tx", fields.tx_id);
+          set("recover-meta-qub", fields.qub_id);
+          set("recover-meta-delivery", fields.delivery);
+          set("recover-meta-title", fields.title);
+          set("recover-meta-round", fields.round);
+          set("recover-meta-type", fields.type);
+          set("recover-meta-signature", fields.signature);
+          set("recover-meta-source", fields.source);
+          document.getElementById("recover-body").textContent = bodyText;
+          document.getElementById("recover-output").hidden = false;
+        }
+
+        function contentTypeLabel(t) {
+          if (t === 1) return "plain text";
+          if (t === 2)
+            return "markdown — rendered as plain text in the standalone";
+          if (t === 3)
+            return "pact terms (canonical CBOR) — shown as hex in the standalone";
+          if (t === 4)
+            return "verdict (canonical CBOR) — shown as hex in the standalone";
+          return `unknown content type 0x${(t || 0)
+            .toString(16)
+            .padStart(2, "0")}`;
+        }
+
+        async function recoverFromUrl(rawUrl) {
+          document.getElementById("recover-output").hidden = true;
+          setRecoverStatus("parsing URL…", "info");
+          const { tx_id, key } = parseQubUrl(rawUrl);
+
+          const stored = await fetchArweaveBytes(tx_id, (m) =>
+            setRecoverStatus(m, "info"),
+          );
+
+          setRecoverStatus("resolving delivery shape…", "info");
+          const { sealed, delivery } = await resolveDelivery(stored.bytes, key);
+          validateSealed(sealed);
+
+          const base = {
+            tx_id,
+            qub_id: bytesToHex(sealed.qub_id),
+            delivery,
+            title: sealed.title,
+            round: String(sealed.drand_round),
+          };
+
+          const nowSec = Math.floor(Date.now() / 1000);
+          if (nowSec < sealed.unlock_at) {
+            const eta = sealed.unlock_at - nowSec;
+            setRecoverStatus(
+              `sealed — unlocks in ${formatDuration(eta)} (round ${sealed.drand_round})`,
+              "info",
+            );
+            showRecoverOutput(
+              { ...base, source: "Arweave: " + stored.source },
+              "(still sealed — the body decrypts at unlock time, not before)",
+            );
+            return;
+          }
+
+          const beacon = await fetchDrandBeacon(
+            sealed.drand_round,
+            sealed.drand_chain_id,
+            (m) => setRecoverStatus(m, "info"),
+          );
+
+          setRecoverStatus("tlock-decrypting and verifying…", "info");
+          const envelope = await openEnvelope(
+            sealed,
+            beacon.signature,
+            beacon.randomness,
+          );
+
+          let bodyText;
+          const structured =
+            envelope.content_type === 3 || envelope.content_type === 4;
+          try {
+            if (structured) throw new Error("structured body");
+            bodyText = new TextDecoder("utf-8", { fatal: true }).decode(
+              envelope.body,
+            );
+          } catch {
+            bodyText =
+              (structured
+                ? "(structured body; raw canonical CBOR hex below)\n\n"
+                : "(body is not valid UTF-8; raw hex below)\n\n") +
+              bytesToHex(envelope.body);
+          }
+          showRecoverOutput(
+            {
+              ...base,
+              type: contentTypeLabel(envelope.content_type),
+              signature: signatureLabel(envelope),
+              source: "Arweave: " + stored.source + ", drand: " + beacon.source,
+            },
+            bodyText,
+          );
+          setRecoverStatus(
+            "recovered — body_hash, qub_id binding and round binding verified.",
+            "ok",
+          );
+        }
+
+        function attachRecoverForm() {
+          const form = document.getElementById("recover-form");
+          const input = document.getElementById("recover-input");
+          const button = document.getElementById("recover-button");
+          form.addEventListener("submit", async (ev) => {
+            ev.preventDefault();
+            button.disabled = true;
+            try {
+              await recoverFromUrl(input.value);
+            } catch (e) {
+              setRecoverStatus(String((e && e.message) || e), "fail");
+            } finally {
+              button.disabled = false;
+            }
+          });
+          // Expose for headless tests — Puppeteer can call
+          // window.qubStandalone.recoverFromUrl(url) and skip the
+          // form submission machinery.
+          globalThis.qubStandalone = {
+            parseQubUrl,
+            recoverFromUrl,
+            base64urlToBytes,
+          };
+        }
+
+        async function runAll() {
+          const summary = document.getElementById("summary");
+          const wrapperResults = await runWrapperSelfTest();
+          const tlockResults = await runTlockSelfTest();
+          const fullPipelineResults = await runFullPipelineSelfTest();
+          const all = [
+            ...wrapperResults,
+            ...tlockResults,
+            ...fullPipelineResults,
+          ];
+          const passed = all.filter((r) => r.ok).length;
+          const total = all.length;
+          summary.classList.remove("running");
+          summary.textContent = passed + " / " + total + " self-tests verified";
+          summary.classList.add(passed === total ? "ok" : "fail");
+          // Surface result on the document so headless test runners can read it.
+          document.documentElement.dataset.selfTest =
+            passed === total ? "pass" : "fail";
+          document.documentElement.dataset.selfTestPassed = String(passed);
+          document.documentElement.dataset.selfTestTotal = String(total);
+          document.documentElement.dataset.selfTestWrapperPassed = String(
+            wrapperResults.filter((r) => r.ok).length,
+          );
+          document.documentElement.dataset.selfTestTlockPassed = String(
+            tlockResults.filter((r) => r.ok).length,
+          );
+          document.documentElement.dataset.selfTestFullPipelinePassed = String(
+            fullPipelineResults.filter((r) => r.ok).length,
+          );
+        }
+
+        attachRecoverForm();
+
+        runAll().catch((err) => {
+          const summary = document.getElementById("summary");
+          summary.classList.remove("running");
+          summary.classList.add("fail");
+          summary.textContent =
+            "self-test crashed: " + ((err && err.message) || err);
+          document.documentElement.dataset.selfTest = "crash";
+        });
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,141 @@
+# Workspace root for qubsocial/qub-public.
+#
+# THIS FILE IS MIRRORED. It lives at `public-mirror/Cargo.toml` in the
+# private qub monorepo and is copied over the public repo's root
+# `Cargo.toml` by `scripts/sync-public-mirror.sh`. Edit it there, not
+# in the public repo, or the next sync will clobber the change.
+#
+# `[workspace.dependencies]` MUST stay in lockstep with the private
+# workspace root for every crate the mirrored members use — the members'
+# `Cargo.toml`s are mirrored byte-for-byte and inherit from here.
+# `scripts/check-public-mirror.sh` builds the mirrored tree in a scratch
+# directory to prove it.
+
+[workspace]
+resolver = "2"
+members = ["crates/qub-core", "tools/qub-verify"]
+# cargo-fuzz manages the fuzz crate as its own workspace (nightly).
+exclude = ["crates/qub-core/fuzz"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "Apache-2.0"
+publish = false
+authors = ["VSPRY INTERNATIONAL PTY LIMITED <ask@vspry.com>"]
+repository = "https://github.com/qubsocial/qub-public"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+
+# Pedantic exceptions — allow these specific lints with justification:
+module_name_repetitions = "allow" # Common in domain-specific crates (e.g., types::QubType)
+must_use_candidate = "allow"      # Too noisy for builder patterns and utility functions
+missing_errors_doc = "allow"      # Will enforce once error types are stabilised
+missing_panics_doc = "allow"      # Will enforce once APIs are stabilised
+
+# Restriction lints — promoted to deny so production code uses `tracing` for
+# logging, not stdout prints, and never ships `dbg!()` macros. `eprintln!` is
+# deliberately not denied: several `#[cfg(test)]` blocks print test-vector
+# hex for `--nocapture` debugging.
+print_stdout = "deny"
+dbg_macro = "deny"
+
+[workspace.dependencies]
+# Internal crates
+qub-core = { path = "crates/qub-core" }
+
+# Core protocol
+ciborium = "0.2.2"
+# Pinned exactly per Andre 2026-05-22 Finding 33 — sha3 is the qub_id +
+# body_hash primitive (PROTOCOL.md §4.1).
+sha3 = "=0.12.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+getrandom = { version = "0.4.2", features = ["wasm_js"] }
+thiserror = "2.0"
+unicode-normalization = "0.1.24"
+unicode-properties = "0.1.4"
+unicode-script = "0.5"
+# Pinned exactly (no ^/no caret-equivalent) per Andre 2026-05-22
+# Finding 33 — pre-1.0 semver is "anything goes between patches", and
+# tlock_age sits on the security-critical timelock decryption path.
+tlock_age = { version = "=0.0.10", default-features = false, features = [
+  "rfc9380",
+] }
+hex = "0.4"
+base64 = "0.23"
+subtle = "2.6"
+# Best-effort scrubbing of secret-key material on drop (SEC-5). Pure
+# Rust, wasm32-compatible; `Zeroizing<T>` zeroes the buffer when it
+# leaves scope so spent ML-DSA seeds and secret keys do not linger in
+# the heap.
+zeroize = "1.8"
+# AES-256-GCM for the private-delivery outer wrapper (PROTOCOL.md §13). Pure
+# Rust, wasm32-compatible, constant-time. Default features are sufficient
+# (`aes` + `alloc` are needed; we do not use the crate's `getrandom`
+# helpers because key + nonce material is always caller-supplied so the
+# wrapper module stays testable without an RNG).
+aes-gcm = "=0.11.1"
+# Post-quantum signatures (ML-DSA-65, FIPS 204) for authorship signing
+# (PROTOCOL.md §9). Default features are disabled to avoid pulling in the
+# `default-rng` feature, which transitively depends on `rand_core`/`getrandom
+# 0.2` and conflicts with the workspace's `getrandom 0.3` (needed for the
+# `wasm_js` backend). We supply our own seeds via `getrandom` directly and
+# call `keygen_from_seed` / `try_sign_with_seed`.
+# Pinned exactly per Andre 2026-05-22 Finding 33 — pre-1.0 crypto
+# crates carry no semver guarantee against breaking changes between
+# patches. fips204 implements ML-DSA-65 signature verification, on
+# the authorship-attestation critical path.
+fips204 = { version = "=0.4.6", default-features = false, features = [
+  "ml-dsa-65",
+] }
+# ANS-104 anchor verification (PROTOCOL.md §16.6/§16.8) — used ONLY by the
+# native `qub-verify` CLI to verify an Arweave anchor DataItem's RSA-PSS
+# signature against the pinned `LogProfile.anchor_owner` trust root. Never
+# referenced by the WASM crates (qub-core / qub-app), so this adds no WASM
+# bundle weight. Pinned exactly per Andre 2026-05-22 Finding 33 — `rsa` sits
+# on the §16.6 anchor trust path; `sha2` supplies the Arweave-wire SHA-256 /
+# SHA-384 (the §15-fenced Arweave-wire-only primitives, never a qub trust hash).
+rsa = "=0.9.10"
+# Held at 0.10.x deliberately: sha2 0.11 moves to `digest` 0.11, but the
+# pinned `ark-ff` 0.6 hash-to-curve (`MapToCurveBasedHasher<_, _, Sha256>` in
+# tlock.rs) still requires a `digest` 0.10 `Sha256`. Bumping sha2 to 0.11
+# breaks the `FixedOutputReset` bound. Move sha2 to 0.11 only in lockstep with
+# an arkworks release that adopts `digest` 0.11 (Dependabot's rust-major group
+# tried to bump both together — that pairing does not compile).
+sha2 = "=0.10.9"
+# BLS12-381 round-signature verification on the WASM viewer path (L3):
+# before tlock decrypt, verify the fetched drand round signature against
+# the pinned quicknet public key so attacker-influenced bytes never reach
+# the IBE — matching the Worker's `verifyRoundSignature`. These are the
+# SAME `arkworks` crates `tlock`/`tlock_age` already pull in transitively
+# (G1 hash-to-curve + pairing), so no new code is added to the bundle.
+# Pinned exactly per Andre 2026-05-22 Finding 33 — pre-1.0 crypto crates
+# on the timelock verification path carry no inter-patch semver promise.
+ark-bls12-381 = { version = "=0.6.0", default-features = false, features = [
+  "curve",
+] }
+ark-ec = { version = "=0.6.0", default-features = false }
+ark-ff = { version = "=0.6.0", default-features = false }
+ark-serialize = { version = "=0.6.0", default-features = false }
+
+# Testing
+proptest = "1"
+
+[profile.release]
+lto = "fat"
+panic = "abort"
+strip = true
+codegen-units = 1
+overflow-checks = true

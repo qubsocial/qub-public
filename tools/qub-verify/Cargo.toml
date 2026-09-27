@@ -1,0 +1,24 @@
+[package]
+name = "qub-verify"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Offline verifier for qub `.qub` export bundles — confirms content integrity, round binding, and authorship without qub infrastructure"
+
+[dependencies]
+qub-core = { workspace = true, default-features = true }
+clap = { version = "4", features = ["derive"] }
+base64 = { workspace = true }
+hex = { workspace = true }
+serde_json = { workspace = true }
+# ANS-104 anchor verification (PROTOCOL.md §16.6/§16.8) — native-only, never
+# reaches the WASM crates. `rsa` verifies the Arweave anchor DataItem's RSA-PSS
+# signature; `sha2` supplies the Arweave-wire SHA-256/SHA-384 deepHash. Both are
+# exact-pinned in [workspace.dependencies] (pre-1.0 crypto, Andre Finding 33).
+rsa = { workspace = true }
+sha2 = { workspace = true }
+
+[lints]
+workspace = true

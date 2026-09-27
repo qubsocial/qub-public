@@ -1,0 +1,63 @@
+[package]
+name = "qub-core-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.qub-core]
+path = ".."
+
+# Empty `[workspace]` excludes this crate from the parent workspace
+# so cargo-fuzz can manage it independently with a nightly toolchain
+# (fuzz binaries are `#![no_main]` and use feature-gated linker shims
+# that don't compose with the parent workspace's `[workspace.lints]`
+# `-D warnings` setting).
+[workspace]
+
+[[bin]]
+name = "decode_sealed_qub"
+path = "fuzz_targets/decode_sealed_qub.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_qub_envelope"
+path = "fuzz_targets/decode_qub_envelope.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_pact_terms"
+path = "fuzz_targets/parse_pact_terms.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "unwrap_sealed_qub"
+path = "fuzz_targets/unwrap_sealed_qub.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "verify_signature"
+path = "fuzz_targets/verify_signature.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decrypt_tlock"
+path = "fuzz_targets/decrypt_tlock.rs"
+test = false
+doc = false
+bench = false

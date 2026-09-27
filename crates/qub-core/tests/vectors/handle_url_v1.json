@@ -1,0 +1,107 @@
+{
+  "comment": "Cross-implementation fixture for handle URL percent-encoding. Both qub_core::handle::encode_handle_for_url (Rust) and encodeHandleForUrl (TS, workers/api/src/utils/handle-url.ts) MUST produce the encoded string verbatim for the input. The contract is documented at docs/IDENTITY.md §3.2.6.9 — both sides leave the RFC 3986 unreserved set untouched (ALPHA / DIGIT / `-` / `_` / `.` / `~`) and percent-encode everything else, including non-ASCII via UTF-8 byte expansion.",
+  "cases": [
+    {
+      "name": "v1-ascii-simple",
+      "comment": "V1 ASCII handle round-trips unchanged — every existing /u/<handle> link in the wild must keep the same path bytes after V2 wiring lands.",
+      "input": "markharper",
+      "encoded": "markharper"
+    },
+    {
+      "name": "v1-ascii-auto-shape",
+      "comment": "Auto-allocated <adj>_<noun>_<digits> handle — _ is in the unreserved set so it stays unencoded.",
+      "input": "orange_fox_612",
+      "encoded": "orange_fox_612"
+    },
+    {
+      "name": "v1-ascii-qub-hex",
+      "comment": "qub_<8 hex> fallback auto-allocation shape.",
+      "input": "qub_deadbeef",
+      "encoded": "qub_deadbeef"
+    },
+    {
+      "name": "rfc3986-unreserved",
+      "comment": "Full unreserved set boundary check: A-Z a-z 0-9 - _ . ~ all stay literal.",
+      "input": "a-b_c.d~e",
+      "encoded": "a-b_c.d~e"
+    },
+    {
+      "name": "latin-extended",
+      "comment": "Latin Extended-A: ö encodes as 2-byte UTF-8.",
+      "input": "möbius",
+      "encoded": "m%C3%B6bius"
+    },
+    {
+      "name": "greek",
+      "comment": "Greek lowercase μαρκος. 2-byte UTF-8 per code point.",
+      "input": "μαρκος",
+      "encoded": "%CE%BC%CE%B1%CF%81%CE%BA%CE%BF%CF%82"
+    },
+    {
+      "name": "cyrillic",
+      "comment": "Cyrillic марк. 2-byte UTF-8 per code point.",
+      "input": "марк",
+      "encoded": "%D0%BC%D0%B0%D1%80%D0%BA"
+    },
+    {
+      "name": "arabic",
+      "comment": "Arabic محمد (RTL). 2-byte UTF-8 per code point. The string is logically LTR-stored; the bidi rendering belongs to the <bdi> wrapper, not the URL bytes.",
+      "input": "محمد",
+      "encoded": "%D9%85%D8%AD%D9%85%D8%AF"
+    },
+    {
+      "name": "hebrew",
+      "comment": "Hebrew משה (RTL).",
+      "input": "משה",
+      "encoded": "%D7%9E%D7%A9%D7%94"
+    },
+    {
+      "name": "hangul",
+      "comment": "Hangul 마르크. 3-byte UTF-8 per syllable block.",
+      "input": "마르크",
+      "encoded": "%EB%A7%88%EB%A5%B4%ED%81%AC"
+    },
+    {
+      "name": "han-hiragana",
+      "comment": "Han+Hiragana mix たろう小林. UTS #39 MR exception (Japanese script combination). 3-byte UTF-8 per code point.",
+      "input": "たろう小林",
+      "encoded": "%E3%81%9F%E3%82%8D%E3%81%86%E5%B0%8F%E6%9E%97"
+    },
+    {
+      "name": "supplementary-plane",
+      "comment": "Mathematical Double-Struck Small M (U+1D55E) — surrogate pair on the JS side, 4-byte UTF-8.",
+      "input": "𝕞",
+      "encoded": "%F0%9D%95%9E"
+    },
+    {
+      "name": "path-reserved-ascii-slash",
+      "comment": "Defensive: the V2 validator rejects `/` but the encoder must escape it if seen — bug-in-upstream caller produces a 404, not a path-traversal surface.",
+      "input": "a/b",
+      "encoded": "a%2Fb"
+    },
+    {
+      "name": "path-reserved-ascii-question",
+      "comment": "Defensive: `?` would otherwise split path/query.",
+      "input": "a?b",
+      "encoded": "a%3Fb"
+    },
+    {
+      "name": "path-reserved-ascii-hash",
+      "comment": "Defensive: `#` would otherwise start a fragment.",
+      "input": "a#b",
+      "encoded": "a%23b"
+    },
+    {
+      "name": "path-reserved-ascii-space",
+      "comment": "Defensive: space encoding.",
+      "input": "a b",
+      "encoded": "a%20b"
+    },
+    {
+      "name": "path-reserved-ascii-percent",
+      "comment": "Defensive: literal % gets escaped (otherwise a malformed encoding loop).",
+      "input": "a%b",
+      "encoded": "a%25b"
+    }
+  ]
+}

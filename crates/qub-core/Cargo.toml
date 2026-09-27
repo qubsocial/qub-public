@@ -1,0 +1,56 @@
+[package]
+name = "qub-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Protocol, wire format, and cryptographic primitives shared by qub apps"
+
+[dependencies]
+ciborium = { workspace = true }
+sha3 = { workspace = true }
+getrandom = { workspace = true }
+thiserror = { workspace = true }
+unicode-normalization = { workspace = true }
+unicode-properties = { workspace = true }
+unicode-script = { workspace = true }
+percent-encoding = "2.3"
+subtle = { workspace = true }
+zeroize = { workspace = true }
+aes-gcm = { workspace = true }
+fips204 = { workspace = true }
+tlock_age = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
+# BLS round-signature verification (L3) — gated with tlock-drand since it
+# only matters alongside the drand decrypt path. The same arkworks crates
+# tlock_age pulls in transitively, plus sha2 for the per-round digest.
+ark-bls12-381 = { workspace = true, optional = true }
+ark-ec = { workspace = true, optional = true }
+ark-ff = { workspace = true, optional = true }
+ark-serialize = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+
+[features]
+default = ["tlock-drand"]
+tlock-drand = [
+  "dep:tlock_age",
+  "dep:hex",
+  "dep:ark-bls12-381",
+  "dep:ark-ec",
+  "dep:ark-ff",
+  "dep:ark-serialize",
+  "dep:sha2",
+]
+test-utils = []
+
+[dev-dependencies]
+proptest = { workspace = true }
+hex = { workspace = true }
+serde_json = { workspace = true }
+qub-core = { path = ".", features = ["test-utils"] }
+
+[lints]
+workspace = true

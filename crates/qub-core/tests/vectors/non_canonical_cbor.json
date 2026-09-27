@@ -1,0 +1,61 @@
+{
+  "comment": "Shared cross-implementation negative-vector corpus (SEC-3). Every entry is non-canonical CBOR that BOTH the Rust qub-core decoder and the TypeScript workers/api decoder MUST reject. Each `hex` decodes to a structurally plausible CBOR value but uses a non-canonical encoding — an indefinite-length item, a non-minimal integer encoding, or trailing bytes. Consumed by crates/qub-core/tests/non_canonical_cbor_vectors.rs and workers/api/src/crypto/__tests__/non-canonical-cbor.test.ts. This file is the single source of truth: do not fork it.",
+  "version": 1,
+  "vectors": [
+    {
+      "name": "top_level_indefinite_map",
+      "hex": "bfff",
+      "reason": "indefinite-length map at the top level"
+    },
+    {
+      "name": "nested_indefinite_array",
+      "hex": "a161769fff",
+      "reason": "{\"v\": [_ ]} — indefinite-length array as a field value"
+    },
+    {
+      "name": "nested_indefinite_map",
+      "hex": "a16176bfff",
+      "reason": "{\"v\": {_ }} — indefinite-length map as a field value"
+    },
+    {
+      "name": "nested_indefinite_byte_string",
+      "hex": "a161765fff",
+      "reason": "{\"v\": (_ )} — indefinite-length byte string as a field value"
+    },
+    {
+      "name": "nested_indefinite_text_string",
+      "hex": "a161767fff",
+      "reason": "{\"v\": (_ )} — indefinite-length text string as a field value"
+    },
+    {
+      "name": "non_minimal_uint8",
+      "hex": "a161761801",
+      "reason": "{\"v\": 1} — value 1 encoded as a uint8 (0x18 0x01) not the canonical 0x01"
+    },
+    {
+      "name": "non_minimal_uint16",
+      "hex": "a16176190001",
+      "reason": "{\"v\": 1} — value 1 encoded as a uint16 (0x19 0x0001)"
+    },
+    {
+      "name": "non_minimal_uint32",
+      "hex": "a161761a00000001",
+      "reason": "{\"v\": 1} — value 1 encoded as a uint32 (0x1a 0x00000001)"
+    },
+    {
+      "name": "non_minimal_uint64",
+      "hex": "a161761b0000000000000001",
+      "reason": "{\"v\": 1} — value 1 encoded as a uint64 (0x1b 0x0000000000000001)"
+    },
+    {
+      "name": "trailing_bytes",
+      "hex": "a000",
+      "reason": "canonical empty map (0xa0) followed by a trailing 0x00 byte"
+    },
+    {
+      "name": "map_keys_out_of_order",
+      "hex": "a26776657273696f6e0164626f64794178",
+      "reason": "{\"version\": 1, \"body\": h'78'} — keys out of canonical order (\"version\" (7 bytes) must not precede \"body\" (4 bytes)); ciborium re-encodes it byte-identically, so only an explicit decode-side key-order check rejects it"
+    }
+  ]
+}
