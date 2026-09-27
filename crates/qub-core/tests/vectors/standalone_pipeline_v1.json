@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "description": "End-to-end fixture for the qub standalone reference viewer Phase 3 self-test, one case per PROTOCOL.md §13.8 delivery shape. `stored_hex` is what lands on permanent storage: an OuterWrapper for the private case (unwrap with key_hex), bare SealedQubCbor for the public case. Given those bytes and the pinned drand quicknet round signature, the viewer must resolve the delivery shape, check shape/visibility agreement and the §4.3 round binding, tlock-decrypt the envelope, verify body_hash, envelope/sealed equality, and recompute qub_id (§4.1). Cross-checked against qub-core by crates/qub-core/tests/standalone_fixture.rs.",
+  "description": "End-to-end fixture for the qub standalone reference viewer Phase 3 self-test, one case per PROTOCOL.md §13.8 delivery shape. `stored_hex` is what lands on permanent storage: an OuterWrapper for the private case (unwrap with key_hex), bare SealedQubCbor for the public case. Given those bytes and the pinned drand quicknet round signature, the viewer must resolve the delivery shape, check shape/visibility agreement and the §4.3 round binding, tlock-decrypt the envelope, verify body_hash, envelope/sealed equality, and recompute qub_id (§4.1). Cross-checked against qub-core by crates/qub-core/tests/standalone_pipeline_vectors.rs.",
   "cases": [
     {
       "name": "private-wrapped-round-32463608",

@@ -270,8 +270,9 @@
         <h2>Phase 1 — outer wrapper unwrap</h2>
         <p class="caption">
           Cross-language test vectors from
-          <code>crates/qub-core/tests/vectors/wrapper_v1.json</code>. AES-256-GCM via
-          WebCrypto, AAD = qub_id (<a href="../protocol/PROTOCOL.md"
+          <code>crates/qub-core/tests/vectors/wrapper_v1.json</code>.
+          AES-256-GCM via WebCrypto, AAD = qub_id (<a
+            href="../protocol/PROTOCOL.md"
             >PROTOCOL.md §13</a
           >).
         </p>
@@ -315,12 +316,12 @@
         <p class="caption">
           The same recovery code Phase 4 runs on a live qub, fed a pinned
           fixture instead of the network — one private (wrapped) and one public
-          (bare) qub: resolve the delivery shape, check it agrees with the
-          inner visibility, check the drand round binding, tlock-decrypt,
-          verify body_hash, and recompute qub_id. The <code>refuse:</code> rows
-          feed it inputs the protocol requires rejecting. The fixture is
-          <code>crates/qub-core/tests/vectors/standalone_pipeline_v1.json</code>,
-          which the Rust reference implementation also unlocks in its test
+          (bare) qub: resolve the delivery shape, check it agrees with the inner
+          visibility, check the drand round binding, tlock-decrypt, verify
+          body_hash, and recompute qub_id. The <code>refuse:</code> rows feed it
+          inputs the protocol requires rejecting. The fixture is
+          <code>crates/qub-core/tests/vectors/standalone_pipeline_v1.json</code
+          >, which the Rust reference implementation also unlocks in its test
           suite.
         </p>
         <table>
@@ -341,10 +342,10 @@
       <section>
         <h2>Phase 4 — recover a real qub</h2>
         <p class="caption">
-          Paste a qub link (from any host) or a bare Arweave transaction id.
-          The page fetches the stored bytes from Arweave, fetches the drand
-          round signature, and recovers the body. For a private qub the part
-          after <code>#</code> is the AES-256-GCM key — the page never sends it
+          Paste a qub link (from any host) or a bare Arweave transaction id. The
+          page fetches the stored bytes from Arweave, fetches the drand round
+          signature, and recovers the body. For a private qub the part after
+          <code>#</code> is the AES-256-GCM key — the page never sends it
           anywhere, and browsers don't transmit fragments to servers. A public
           qub has no key.
         </p>
@@ -420,16 +421,16 @@
           equality, and qub_id recomputation (§4.1).
         </p>
         <p>
-          <strong>Phase 4</strong> runs that same code against the network:
-          the stored bytes come from Arweave (multi-gateway fallback) and the
-          round signature from drand (multi-endpoint fallback).
+          <strong>Phase 4</strong> runs that same code against the network: the
+          stored bytes come from Arweave (multi-gateway fallback) and the round
+          signature from drand (multi-endpoint fallback).
         </p>
         <p>
           <strong>Not covered here:</strong> ML-DSA-65 authorship signatures
           (§9) and transparency-log proofs (§16). For those, export the qub's
           <code>.qub</code> bundle and run the <code>qub-verify</code> CLI from
-          this repository, which performs the full §11 third-party
-          verification offline.
+          this repository, which performs the full §11 third-party verification
+          offline.
         </p>
         <p>
           The point: anyone can recover qub content without depending on
@@ -505,7 +506,7 @@
     <script type="application/json" id="full-pipeline-fixture">
       {
         "version": 2,
-        "description": "End-to-end fixture for the qub standalone reference viewer Phase 3 self-test, one case per PROTOCOL.md §13.8 delivery shape. `stored_hex` is what lands on permanent storage: an OuterWrapper for the private case (unwrap with key_hex), bare SealedQubCbor for the public case. Given those bytes and the pinned drand quicknet round signature, the viewer must resolve the delivery shape, check shape/visibility agreement and the §4.3 round binding, tlock-decrypt the envelope, verify body_hash, envelope/sealed equality, and recompute qub_id (§4.1). Cross-checked against qub-core by crates/qub-core/tests/standalone_fixture.rs.",
+        "description": "End-to-end fixture for the qub standalone reference viewer Phase 3 self-test, one case per PROTOCOL.md §13.8 delivery shape. `stored_hex` is what lands on permanent storage: an OuterWrapper for the private case (unwrap with key_hex), bare SealedQubCbor for the public case. Given those bytes and the pinned drand quicknet round signature, the viewer must resolve the delivery shape, check shape/visibility agreement and the §4.3 round binding, tlock-decrypt the envelope, verify body_hash, envelope/sealed equality, and recompute qub_id (§4.1). Cross-checked against qub-core by crates/qub-core/tests/standalone_pipeline_vectors.rs.",
         "cases": [
           {
             "name": "private-wrapped-round-32463608",
@@ -907,7 +908,9 @@
             }
             const sealed = decodeCbor(sealedBytes);
             if (!bytesEqual(sealed.qub_id, top.qub_id)) {
-              throw new Error("wrapper qub_id does not match the inner SealedQub");
+              throw new Error(
+                "wrapper qub_id does not match the inner SealedQub",
+              );
             }
             if (sealed.visibility !== VISIBILITY_PRIVATE) {
               throw new Error(
@@ -942,7 +945,10 @@
           if (sealed.version !== 1) {
             throw new Error("unsupported SealedQub version " + sealed.version);
           }
-          if (!(sealed.qub_id instanceof Uint8Array) || sealed.qub_id.length !== 32) {
+          if (
+            !(sealed.qub_id instanceof Uint8Array) ||
+            sealed.qub_id.length !== 32
+          ) {
             throw new Error("SealedQub qub_id must be 32 bytes");
           }
           if (!(sealed.tlock_ciphertext instanceof Uint8Array)) {
@@ -1043,7 +1049,9 @@
           );
           const envelope = decodeCbor(envelopeBytes);
           if (envelope.version !== 1) {
-            throw new Error("unsupported QubEnvelope version " + envelope.version);
+            throw new Error(
+              "unsupported QubEnvelope version " + envelope.version,
+            );
           }
           if (!bytesEqual(sha3(envelope.body), envelope.body_hash)) {
             throw new Error(
@@ -1051,13 +1059,19 @@
             );
           }
           if (!bytesEqual(envelope.qub_id, sealed.qub_id)) {
-            throw new Error("qub_id mismatch between envelope and sealed layer");
+            throw new Error(
+              "qub_id mismatch between envelope and sealed layer",
+            );
           }
           if (envelope.unlock_at !== sealed.unlock_at) {
-            throw new Error("unlock_at mismatch between envelope and sealed layer");
+            throw new Error(
+              "unlock_at mismatch between envelope and sealed layer",
+            );
           }
           if (envelope.outcome_at !== sealed.outcome_at) {
-            throw new Error("outcome_at mismatch between envelope and sealed layer");
+            throw new Error(
+              "outcome_at mismatch between envelope and sealed layer",
+            );
           }
           if (!bytesEqual(computeQubId(envelope, sealed), sealed.qub_id)) {
             throw new Error(
@@ -1083,7 +1097,10 @@
         // Every intermediate value is also checked against the fixture.
         async function fullPipelineCase(c) {
           const key = c.key_hex ? hexToBytes(c.key_hex) : null;
-          const { sealed } = await resolveDelivery(hexToBytes(c.stored_hex), key);
+          const { sealed } = await resolveDelivery(
+            hexToBytes(c.stored_hex),
+            key,
+          );
           validateSealed(sealed);
           if (bytesToHex(sealed.qub_id) !== c.qub_id_hex) {
             throw new Error("sealed: qub_id differs from fixture");
@@ -1109,7 +1126,9 @@
           ) {
             throw new Error("envelope: metadata differs from fixture");
           }
-          return new TextDecoder("utf-8", { fatal: true }).decode(envelope.body);
+          return new TextDecoder("utf-8", { fatal: true }).decode(
+            envelope.body,
+          );
         }
 
         // Negative cases: each MUST be refused. Derived from the fixture,
@@ -1133,7 +1152,8 @@
             });
             out.push({
               name: "refuse: private SealedQub delivered bare",
-              run: () => resolveDelivery(hexToBytes(priv.sealed_cbor_hex), null),
+              run: () =>
+                resolveDelivery(hexToBytes(priv.sealed_cbor_hex), null),
             });
           }
           if (pub) {
@@ -1156,7 +1176,11 @@
                   null,
                 );
                 sealed.title = "A different title";
-                await openEnvelope(sealed, pub.signature_hex, pub.randomness_hex);
+                await openEnvelope(
+                  sealed,
+                  pub.signature_hex,
+                  pub.randomness_hex,
+                );
               },
             });
           }
@@ -1173,7 +1197,12 @@
           for (const c of fixture.cases) {
             try {
               recoveredBody = await fullPipelineCase(c);
-              results.push({ name: c.name, meta: c.delivery, ok: true, error: null });
+              results.push({
+                name: c.name,
+                meta: c.delivery,
+                ok: true,
+                error: null,
+              });
             } catch (e) {
               results.push({
                 name: c.name,
