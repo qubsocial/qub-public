@@ -1,0 +1,12 @@
+# Only GitHub Actions are updated here. Cargo dependencies are NOT:
+# Cargo.toml / Cargo.lock are mirrored from the upstream repository and
+# a local bump would be overwritten by the next sync.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

@@ -1,0 +1,47 @@
+# cargo-deny policy for the public mirror. https://embarkstudios.github.io/cargo-deny/
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = [
+  # proc-macro-error2 — unmaintained (RUSTSEC-2026-0173). Compile-time-only
+  # proc-macro, never linked into a binary. Arrives solely via
+  # tlock_age -> age -> i18n-embed-fl; no upgrade exists until age drops it.
+  # Re-derive with `cargo tree -i proc-macro-error2` before renewing.
+  # Review: 2026-12-31
+  { id = "RUSTSEC-2026-0173", reason = "compile-time only; via tlock_age -> age -> i18n-embed-fl, no upstream fix" },
+  # rsa — Marvin Attack timing side channel (RUSTSEC-2023-0071). The
+  # advisory is a PRIVATE-key leak through decrypt/sign timing. The only
+  # user, tools/qub-verify, does RSA-PSS signature VERIFICATION of a public
+  # anchor key: no RsaPrivateKey, no sign, no decrypt anywhere in the tree.
+  # No fixed release exists (RustCrypto/RSA#626).
+  # Review: 2026-12-31
+  { id = "RUSTSEC-2023-0071", reason = "verify-only use of rsa; private-key timing leak unreachable" },
+]
+
+[licenses]
+version = 2
+confidence-threshold = 0.8
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+  "CC0-1.0",
+  "Zlib",
+  "BSL-1.0",
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
