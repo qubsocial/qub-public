@@ -13,7 +13,7 @@
 
 [workspace]
 resolver = "2"
-members = ["crates/qub-core", "tools/qub-verify"]
+members = ["crates/qub-core", "tools/qub-mcp", "tools/qub-verify"]
 # cargo-fuzz manages the fuzz crate as its own workspace (nightly).
 exclude = ["crates/qub-core/fuzz"]
 
