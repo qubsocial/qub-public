@@ -14,7 +14,7 @@ use qub_core::log::{AnchorRef, InclusionProof, LogLeaf, LogProfile};
 use qub_core::merkle;
 use qub_core::seal::{SealInput, seal};
 use qub_core::tlock::DrandTimelockProvider;
-use qub_core::types::{CONTENT_TYPE_TEXT, ComposeQub};
+use qub_core::types::{CONTENT_TYPE_TEXT, ComposeQub, SealedQubBuilder};
 use qub_core::wire::SealedQubCbor;
 
 // drand quicknet parameters (baked into the protocol).
@@ -260,6 +260,93 @@ fn cli_refuses_bundle_still_locked() {
     assert!(
         stdout.contains("NOT VERIFIED") && stdout.contains("still locked"),
         "expected still-locked reason:\n{stdout}"
+    );
+}
+
+/// A real quicknet bundle whose tlock stanza body has one base64 character
+/// changed in its last line (bytes 96..128 of the body: the IBE's V and W).
+/// The round, the round label and the beacon are all genuine, so only the
+/// IBE consistency check can refuse it.
+fn tampered_tlock_bundle(body: &str) -> (Vec<u8>, i64) {
+    let (sealed_cbor, unlock_at, _qub_id, _round) = seal_quicknet(body);
+    let sealed = sealed_cbor.parse().expect("sealed CBOR parses");
+    let mut ct = sealed.tlock_ciphertext().to_vec();
+    // The tlock stanza is its argument line and three body lines (64, 64 and
+    // 43 columns); age's grease stanza may follow it.
+    let start = ct
+        .windows(9)
+        .position(|w| w == b"-> tlock ")
+        .expect("tlock stanza");
+    let end = (start..ct.len())
+        .filter(|&i| ct[i] == b'\n')
+        .nth(3)
+        .expect("three body lines");
+    let at = end - 43 + 20;
+    ct[at] = if ct[at] == b'A' { b'B' } else { b'A' };
+    let tampered = SealedQubBuilder::new()
+        .version(sealed.version())
+        .qub_id(*sealed.qub_id())
+        .visibility(sealed.visibility())
+        .unlock_at(sealed.unlock_at())
+        .outcome_at(sealed.outcome_at())
+        .drand_chain_id(sealed.drand_chain_id().to_owned())
+        .drand_round(sealed.drand_round())
+        .drand_chain_version(sealed.drand_chain_version())
+        .tlock_ciphertext(ct)
+        .recipient_pubkey(sealed.recipient_pubkey().copied())
+        .title(sealed.title().map(str::to_owned))
+        .build()
+        .expect("rebuilt sealed qub");
+    let bundle = QubBundle::new(
+        SealedQubCbor::from_sealed_qub(&tampered).expect("serialises"),
+        signature_bytes(),
+        "tx-tampered".into(),
+    )
+    .expect("bundle builds")
+    .with_sealed_at(Some(unlock_at - 100));
+    (bundle.to_cbor().expect("bundle encodes"), unlock_at)
+}
+
+/// A bundle built by its author to crash verifiers is refused, not a crash:
+/// tlock 0.0.10's IBE ends in an `assert_eq!` that a tampered stanza body
+/// used to reach, and the release profile aborts.
+#[test]
+fn cli_refuses_a_tampered_tlock_body_without_a_panic() {
+    let (bytes, unlock_at) = build_real_quicknet_bundle("control");
+    let (tampered, tampered_unlock_at) = tampered_tlock_bundle("tampered");
+    assert_eq!(unlock_at, tampered_unlock_at);
+    let now_arg = (unlock_at + 1).to_string();
+
+    let mut outputs = Vec::new();
+    for (tag, input) in [("control", bytes), ("tampered", tampered)] {
+        let path = temp_qub_path(tag);
+        std::fs::write(&path, &input).expect("write .qub");
+        outputs.push(run_verify(&[
+            path.as_os_str(),
+            std::ffi::OsStr::new("--now"),
+            std::ffi::OsStr::new(&now_arg),
+        ]));
+        let _ = std::fs::remove_file(&path);
+    }
+    // The control proves the bundle shape opens before it is tampered.
+    assert!(outputs[0].status.success(), "control must verify");
+
+    let output = &outputs[1];
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("panicked"),
+        "qub-verify panicked on a tampered tlock body:\n{stderr}"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "a tampered tlock body must be NOT VERIFIED (exit 1)\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        stdout.contains("NOT VERIFIED")
+            && stdout.contains("not consistent with the round's beacon"),
+        "expected the IBE consistency refusal:\n{stdout}"
     );
 }
 

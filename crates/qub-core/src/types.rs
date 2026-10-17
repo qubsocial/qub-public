@@ -2323,7 +2323,7 @@ mod tests {
         assert_eq!(c.unlock_at(), None);
         assert_eq!(c.visibility(), VISIBILITY_PUBLIC);
         assert_eq!(c.content_type(), CONTENT_TYPE_TEXT);
-        assert!(c.plaintext().is_empty());
+        assert_eq!(c.plaintext(), []);
         assert_eq!(c.sender_label(), None);
         assert_eq!(c.status(), DraftStatus::Composing);
     }

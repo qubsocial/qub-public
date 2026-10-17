@@ -12,12 +12,12 @@ ______________________________________________________________________
 
 | Field | Value |
 | ----------- | ----------------------------- |
-| **Document release** | 1.0.0 (`protocol-v1.0.0`) |
+| **Document release** | 1.0.1 (`protocol-v1.0.1`) |
 | **Wire protocol** | `0x01` |
 | **Outer wrapper** | `0x01` |
-| **Effective date** | 2026-09-23 |
+| **Effective date** | 2026-10-17 |
 | **Status** | **Current** |
-| **Reviewed through** | 2026-09-23 |
+| **Reviewed through** | 2026-10-17 |
 
 This document is the normative protocol specification for the qub timed commitment system. It defines data structures, serialisation rules, derivation formulas, and verification procedures required for interoperable implementations.
 
@@ -285,7 +285,7 @@ qub_id = SHA3-256(
 
 **`outcome_at` encoding:** A pre-release implementation revision extended the preimage from 92 to 100 bytes to fold the optional `outcome_at` field into the binding. Absent `outcome_at` is encoded as 8 zero bytes; the protocol validators reject `outcome_at <= 0` everywhere so this sentinel cannot collide with a legitimate value. See §3.2 (wire format) and the in-tree `tasks/verdict-uplift-plan.md` for the verdict mechanic that motivates this field.
 
-**`drand_round` encoding:** A later pre-release implementation revision extended the preimage from 100 to 108 bytes to fold `drand_round` (the target drand round, §4.3) into the binding, and bumped the domain separator to `QUB_ID_V2`. This binds the timelock round into the qub identity: a gateway cannot rebind the ciphertext to a different (e.g. already-past) round than the displayed `unlock_at` implies. The unlock procedure (§8) additionally verifies that the round baked into the tlock ciphertext stanza matches `unlock_round(unlock_at)`, so the displayed unlock time is provably the round that gates decryption.
+**`drand_round` encoding:** A later pre-release implementation revision extended the preimage from 100 to 108 bytes to fold `drand_round` (the target drand round, §4.3) into the binding, and bumped the domain separator to `QUB_ID_V2`. This binds the timelock round into the qub identity: a gateway cannot rebind the ciphertext to a different (e.g. already-past) round than the displayed `unlock_at` implies. The unlock procedure (§8) additionally verifies that the round named in the tlock ciphertext stanza matches `unlock_round(unlock_at)` (step 6a), and at the unlock time that the ciphertext opens under that round's verified beacon (step 7). The stanza's round is a label: the round that gates decryption is the identity the ciphertext was encrypted to, which no reader can check before that round's beacon is published. A ciphertext that names the displayed round but was encrypted to another therefore passes the checks made before the unlock time, and does not decrypt at step 7b, so it is not opened.
 
 **Properties:**
 
@@ -294,7 +294,7 @@ qub_id = SHA3-256(
 - `qub_id` does not depend on `sender_label`, `reply_to`, signature bytes, or signing public keys. Under the current V2 signing construction, however, `sender_label` and `reply_to` are authenticated directly by `sender_label_hash` and `reply_to_or_zero` (§9.3) whenever signatures are present.
 - Changing the SealedQub `title` (with everything else fixed) changes `qub_id` via `title_hash`. A gateway therefore cannot swap the plaintext title displayed on the countdown without invalidating the qub identity.
 - Changing the SealedQub `outcome_at` (with everything else fixed) changes `qub_id` via the preimage. A gateway cannot swap the pre-reveal verdict-on date displayed on the countdown without invalidating the qub identity.
-- Changing `drand_round` (with everything else fixed) changes `qub_id` via the preimage. A gateway cannot rebind the timelock ciphertext to a different round without invalidating the qub identity; combined with the §8 unlock-time stanza-round check, the displayed `unlock_at` is the round that actually gates decryption.
+- Changing `drand_round` (with everything else fixed) changes `qub_id` via the preimage. A gateway cannot rebind the timelock ciphertext to a different round without invalidating the qub identity; combined with the §8 stanza-round check (step 6a) and decryption under the displayed round's verified beacon (step 7), a qub whose ciphertext was not encrypted to the displayed round does not open in a conforming viewer. What cannot be checked before the unlock time is described in the `drand_round` encoding note above.
 
 ### 4.2 body_hash
 
@@ -540,14 +540,21 @@ The complete unlock sequence. Each step is normative.
     expected_round OR SealedQub.drand_round == expected_round - 1 (the
     legacy pre-release mapping—see §4.3), AND the round baked into the tlock
     ciphertext stanza (read via the age/tlock header, no signature required)
-    == SealedQub.drand_round exactly. The stanza round is the one that
-    actually gates decryption; without this check a malicious creator could
-    bind the ciphertext to an already-past round while displaying a future
-    countdown, so anyone reading the stored bytes could decrypt before
-    unlock_at. Implementations with no chain identity (test mocks) skip this
-    check.
+    == SealedQub.drand_round exactly. The stanza round is a label, not a
+    proof: the round that gates decryption is the identity the ciphertext
+    was encrypted to, which no reader can check before that round's beacon
+    is published. This check refuses a qub whose stanza names an
+    already-past round while it displays a future countdown; one whose
+    stanza names the displayed round but whose ciphertext was encrypted to
+    another round does not decrypt at step 7b. Implementations with no
+    chain identity (test mocks) skip this check.
  7. Once current time ≥ SealedQub.unlock_at:
-    a. Fetch drand round signature for SealedQub.drand_round from drand network.
+    a. Fetch drand round signature for SealedQub.drand_round from drand
+       network, and BLS-verify it against the pinned chain public key as the
+       beacon of that round before decrypting. This restates what §11 step 5
+       and §17.4 step 2 already require of a verifier: a signature that does
+       not verify, including a genuine beacon of another round, is an
+       integrity error, not an input to decryption.
     b. Compute B = tlock_decrypt(SealedQub.tlock_ciphertext, round_signature).
  8. Parse B → QubEnvelope.
  9. Validate QubEnvelope.version is known.
@@ -897,7 +904,19 @@ history in the same reviewed change.
 
 | Document release | Effective date | Status | Wire protocol | Wrapper | Source |
 | ---------------- | -------------- | ------ | ------------- | ------- | ------ |
-| 1.0.0 | 2026-09-23 | **Current** | `0x01` | `0x01` | `protocol-v1.0.0` |
+| 1.0.1 | 2026-10-17 | **Current** | `0x01` | `0x01` | `protocol-v1.0.1` |
+| 1.0.0 | 2026-09-23 | Superseded | `0x01` | `0x01` | `protocol-v1.0.0` |
+
+Release history:
+
+- **1.0.1** (2026-10-17, PATCH): accuracy corrections only; no conforming
+  bytes or required behaviour change. The round named in the tlock stanza is
+  a label, not the round that gates decryption: that is the identity the
+  ciphertext was encrypted to, which no reader can check before that round's
+  beacon is published (§4.1 `drand_round` note and property, §8 step 6a).
+  §8 step 7a now states the beacon verification that §11 step 5 and §17.4
+  step 2 already required before decryption.
+- **1.0.0** (2026-09-23): the first release under this section's versioning.
 
 ### 12.2 Protocol Version
 

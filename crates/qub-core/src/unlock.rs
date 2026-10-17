@@ -116,8 +116,10 @@ pub enum UnlockError {
     /// tlock ciphertext stanza disagrees with
     /// `unlock_round(unlock_at)` — a malicious or tampered qub trying to
     /// bind its ciphertext to a different (e.g. already-past) round than
-    /// its displayed countdown implies. The displayed unlock time is
-    /// therefore not the round that actually gates decryption.
+    /// its displayed countdown implies. (The stanza round is a label; what
+    /// gates decryption is the round the body was encrypted to, and
+    /// [`crate::tlock::TimelockProvider::decrypt`] refuses a body that is not
+    /// consistent with its labelled round's beacon.)
     #[error(
         "drand round mismatch: unlock_at implies round {expected}, qub is bound to round {actual}"
     )]
@@ -228,8 +230,8 @@ pub fn unlock(input: UnlockInput<'_>) -> Result<RevealedQub, UnlockError> {
         });
     }
 
-    // Step 7c: round-binding check (C1). The displayed `unlock_at` must
-    // be the round that actually gates decryption. We recompute the
+    // PROTOCOL.md §8 step 6a: round-binding check (C1). The displayed
+    // `unlock_at` must name the stanza's round. We recompute the
     // expected round from `unlock_at` + chain params and require the
     // advisory `drand_round` metadata to match it — with a one-round
     // legacy tolerance: qubs sealed under the pre-V1.3 `ceil` mapping
@@ -238,11 +240,17 @@ pub fn unlock(input: UnlockInput<'_>) -> Result<RevealedQub, UnlockError> {
     // the immutable qub_id preimage, so they must stay verifiable. The
     // tolerance widens the earliest gating signature by at most one
     // drand period. The round baked into the tlock ciphertext stanza
-    // must then equal the metadata round exactly — the stanza round is
-    // the cryptographically meaningful one: without this check a
-    // malicious creator could bind the ciphertext to an already-past
-    // round while displaying a future countdown, so anyone reading the
-    // bytes could decrypt early. Gated on a chain-bound provider — the
+    // must then equal the metadata round exactly. The stanza round is a
+    // label, not a proof: what gates decryption is the round the body was
+    // encrypted to. This check binds the label to the countdown, and
+    // decrypt (step 7) binds the body to the label — it verifies the
+    // label round's beacon and refuses a body not consistent with it — so
+    // together `unlock` never opens a qub whose body was not encrypted to
+    // the displayed round. Before the unlock time nobody can tell: a body
+    // encrypted to an already-past round under a future label is readable
+    // early by anyone holding that round's beacon (tlock_age ignores the
+    // label), and is refused here only at step 7 (PROTOCOL.md §4.1
+    // `drand_round` note). Gated on a chain-bound provider — the
     // test mock has no genesis/period and exposes no stanza round, so it
     // opts out, mirroring the SEC-20 chain-binding gate above.
     if tlock.chain_hash_hex().is_some() {
@@ -313,7 +321,8 @@ pub fn unlock(input: UnlockInput<'_>) -> Result<RevealedQub, UnlockError> {
     // qub_id — passes them all. Only recomputing the identity from
     // content closes that. `body_hash` was proven correct in step 10;
     // `drand_round` is taken from the sealed layer (the round the
-    // ciphertext is actually bound to, per step 7c); the title lives
+    // ciphertext is bound to: its label passed step 6a and decrypt's
+    // consistency check at step 7); the title lives
     // plaintext on the sealed layer and is folded in via `title_hash`.
     let derived_qub_id = qub_id(
         envelope.version(),

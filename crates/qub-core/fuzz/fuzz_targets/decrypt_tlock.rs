@@ -12,17 +12,26 @@
 // reports a panic as a crash, which auto-files an issue via
 // `.github/workflows/fuzz.yml`.
 //
-// Input shape: the first 96 bytes (or fewer) are the drand round
+// Input shape: the first 48 bytes (or fewer) are the drand round
 // signature; the remainder is the tlock ciphertext. The fuzzer can
 // mutate either side independently.
+//
+// `decrypt` verifies the beacon before anything reaches the IBE, and a
+// random 48 bytes is never a valid beacon, so without a genuine one the
+// fuzzer cannot get past that check to the stanza parser's IBE replay
+// and tlock's own (panicking) IBE. `fuzz/seeds/decrypt_tlock/` holds the
+// pinned quicknet round-1000 beacon followed by a valid round-1000
+// ciphertext; `fuzz.yml` copies it into the corpus before each run, so
+// mutations of the ciphertext with the genuine beacon in place reach
+// the IBE path.
 
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
 use qub_core::tlock::{DrandTimelockProvider, TimelockProvider};
 
-/// drand quicknet beacon signatures are G1 points (96 bytes).
-const ROUND_SIG_LEN: usize = 96;
+/// drand quicknet beacon signatures are compressed G1 points (48 bytes).
+const ROUND_SIG_LEN: usize = 48;
 
 fuzz_target!(|data: &[u8]| {
     let provider = DrandTimelockProvider::quicknet();

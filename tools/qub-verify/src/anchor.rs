@@ -675,6 +675,24 @@ mod tests {
     }
 
     #[test]
+    fn signed_but_unpublished_fixture_cannot_establish_deadline_time() {
+        // The fixture is only local bytes; this test neither publishes nor
+        // queries Arweave. A provisioned owner pin still makes the existing
+        // anchor leg trust-bearing. Thus that leg alone cannot establish
+        // chain inclusion, its block time, or a pre-deadline verdict.
+        let fx = fixture();
+        let raw = fixture_hex(&fx, "/data_item/raw_hex");
+        let owner: [u8; 32] = fixture_hex(&fx, "/data_item/owner_address_hex")
+            .try_into()
+            .expect("32-byte owner address");
+        let report = verify_anchor_tx(&raw, &fixture_proof(&fx), &LogProfile::new(owner, vec![]));
+        assert!(report.is_trust_bearing());
+        assert!(anchor_tx_fault(&report).is_ok());
+        // No inclusion-time field exists in the report. The only valid S1
+        // pre-deadline verdict for these unpublished fixture bytes is unknown.
+    }
+
+    #[test]
     fn anchor_tx_owner_pin_rejects_wrong_provisioned_owner() {
         // A provisioned profile pinned to a DIFFERENT owner must reject the
         // anchor as a hard fault (the post-deploy false-accept barrier).

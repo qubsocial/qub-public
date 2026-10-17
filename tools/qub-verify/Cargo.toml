@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Offline verifier for qub `.qub` export bundles — confirms content integrity, round binding, and authorship without qub infrastructure"
+description = "Verifier for qub `.qub` export bundles — confirms content integrity, round binding, and authorship offline, and (with --timing) checks the storage transaction against Arweave gateways that qub does not run"
 
 [dependencies]
 qub-core = { workspace = true, default-features = true }
@@ -19,6 +19,13 @@ serde_json = { workspace = true }
 # exact-pinned in [workspace.dependencies] (pre-1.0 crypto, Andre Finding 33).
 rsa = { workspace = true }
 sha2 = { workspace = true }
+# `--timing` only: the one network path in this binary. It reads Arweave
+# gateways — never a qub server — and is off unless the flag is given. Same
+# version and TLS stack as qub-mcp.
+reqwest = { version = "0.12", default-features = false, features = [
+  "rustls-tls",
+  "blocking",
+] }
 
 [lints]
 workspace = true

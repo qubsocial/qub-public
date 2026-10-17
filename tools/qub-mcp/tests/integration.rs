@@ -28,6 +28,18 @@ use serde_json::{Value, json};
 
 const BIN_PATH: &str = env!("CARGO_BIN_EXE_qub-mcp");
 
+/// A state-dir path under the temp dir that is never created.
+fn unused_state_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join(format!(
+        "qub-mcp-integration-unused-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ))
+}
+
 /// Spawn the binary, send the supplied JSON-RPC frames (one per line),
 /// close stdin so the read loop exits, and return the stdout lines.
 ///
@@ -41,6 +53,9 @@ fn run_with_frames(frames: &[Value], env_extra: &[(&str, &str)]) -> Vec<Value> {
     // Tests that need it set it via env_extra.
     cmd.env_remove("QUB_API_KEY");
     cmd.env("QUB_BASE_URL", "https://example.invalid"); // never reached in these tests
+    // Never touch the developer's real journal: point the state dir at a
+    // path that does not exist (none of these tests reach the journal).
+    cmd.env("QUB_MCP_STATE_DIR", unused_state_dir());
     for (k, v) in env_extra {
         cmd.env(k, v);
     }
@@ -107,7 +122,7 @@ fn binary_responds_to_initialize_with_protocol_envelope() {
 }
 
 #[test]
-fn binary_lists_all_three_tools() {
+fn binary_lists_all_five_tools() {
     let req = json!({
         "jsonrpc": "2.0",
         "id": 7,
@@ -118,11 +133,13 @@ fn binary_lists_all_three_tools() {
     let tools = responses[0]["result"]["tools"]
         .as_array()
         .expect("tools is an array");
-    assert_eq!(tools.len(), 3);
+    assert_eq!(tools.len(), 5);
     let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
     assert!(names.contains(&"create_qub"));
     assert!(names.contains(&"read_qub"));
     assert!(names.contains(&"check_status"));
+    assert!(names.contains(&"list_pending_operations"));
+    assert!(names.contains(&"verify_forecast_series"));
 }
 
 #[test]
@@ -149,6 +166,7 @@ fn binary_returns_parse_error_on_malformed_input() {
     let mut child = Command::new(BIN_PATH)
         .env_remove("QUB_API_KEY")
         .env("QUB_BASE_URL", "https://example.invalid")
+        .env("QUB_MCP_STATE_DIR", unused_state_dir())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -271,5 +289,5 @@ fn binary_round_trips_full_protocol_handshake() {
     assert!(responses[0]["result"]["protocolVersion"].is_string());
     assert_eq!(responses[1]["id"], 2);
     assert_eq!(responses[2]["id"], 3);
-    assert_eq!(responses[2]["result"]["tools"].as_array().unwrap().len(), 3);
+    assert_eq!(responses[2]["result"]["tools"].as_array().unwrap().len(), 5);
 }

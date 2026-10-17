@@ -1,0 +1,62 @@
+{
+  "_comment": "A transaction mined on Arweave mainnet, recorded verbatim on 2026-10-11 from GET /tx/<id>, /tx/<id>/status and /block/hash/<indep_hash>. arweave.net, ar-io.dev and permagate.io returned byte-identical headers and the same block. Public chain data; static test input only, never fetched at test time. `status.number_of_confirmations` is the value observed at capture. The block is trimmed to the members the verifier reads.",
+  "header": {
+    "format": 2,
+    "id": "7U4vVDnTAXnCTSqm9-9K_ErhYgHnDcreSD6xx8TLkAo",
+    "last_tx": "VXLBVzC5XVk4cRY1r1tGwm7VQnk_soCF6-TG-jxSYs5BTN_qLYPVSVIV3nxdqer6",
+    "owner": "rdqG7GKrHuPRrx8SAe0x8uA4WeWiGkcnWVXwKryf0fbqLdGokf-XEx9wAv05Qz48ZW26d6QRGCQWWG79hyNJkgiJ27g6aApKtOoh1BGvDDyqPdY9NeZXER-XudIiwY54mRWZD7-PncpsoQXBtXaLnsbHDGsHrXbRdKkrkw7M8Y9m6ICGevxv5TU_GFqfosVtuZ_tNJf2tpieei15_USmPrmN9fkI8aY5JFVmdceB9MQXU47UeMZiUd1rhiBtS1Kg8jQ-Ql-DCb9oaa4KrC5So8ib92wAbESo3S3wdAX_txJytsH8fEiyAwohxQP5R0JhMJ1FmQ1uEGijYm3nOrbOrvKbdumTRurSpcmZqbgnMdD1KTa-uZjMKb_SwI5xuuP8JuuYxapTadyJJHuYJGVToNhPzpx1JcXUHiK10CzBw2PLptjAKgL2TCiPYQ5k4yFKtMfuxwYpR1Ywfju97XxwP7-B-xTM74jJaBQaitE6zpBxNK5HI0ktWPeKGA4yxeFj5MvJ5G6KwueknLBahh4vjCVAHewZXYeT8e-XqSgJBIv_TaoqZ5ELBINOsCo2MCZb4g0vDa0VhHcwXXcqpVCs-5vrGOywYE7nbMMwQrr4FjO-O2vUedSlNTyLiiC9MCfO1RTKFbQ47ILd4erp4MsmJ0cMuwM54YgXFgk9QXNVw7E",
+    "tags": [
+      {
+        "name": "Q29udGVudC1UeXBl",
+        "value": "YXBwbGljYXRpb24vanNvbg"
+      },
+      {
+        "name": "RmlsZS1IYXNo",
+        "value": "ZmYyODUzYTk1ZDEyZTk1ZjM2ZDM4YmMwMWNmM2QxZjQ4MTM4N2RhNGZmNmYzOTRhODViOGE5Mzk4MzIwOGI4Zg"
+      },
+      {
+        "name": "VGltZXN0YW1w",
+        "value": "MjAyNi0xMC0xMFQxNjoyMDozNy44NjRa"
+      },
+      {
+        "name": "R3VhcmRpYW5DaGFpbi1LZXk",
+        "value": "bWVya2xlLWJhdGNoZXMvbWdjXzE3OTE2NDkwNzkwODBfZTNhNWU2NzUvdHJlZS5qc29u"
+      },
+      {
+        "name": "R3VhcmRpYW5DaGFpbi1Qcm92aWRlcg",
+        "value": "QXJ3ZWF2ZQ"
+      },
+      {
+        "name": "QXBwLU5hbWU",
+        "value": "R3VhcmRpYW5DaGFpbg"
+      },
+      {
+        "name": "QXBwLVZlcnNpb24",
+        "value": "Mi4wLjA"
+      }
+    ],
+    "target": "",
+    "quantity": "0",
+    "data": "",
+    "data_size": "3611",
+    "data_root": "C4EFuPBA0xlKSXRDI3yzWEpggH7QjFxCE64476cfaxs",
+    "reward": "3427788513",
+    "signature": "Cqnb_IZIU4m46DLsvAv_2iW1YRpIe7I9q6JuMNc2INBij3OaYsMm89laDgllpHEY1zaST6as_u9FyALG9g1I1ZDdBBUhAcmFvYaLrx1bk8v-odpa4lgSoOS8Be9KINUz9qN7A0bhQZ5x8Ex46xSRNW6frF-vEGzc7B4zpOdCDJs-1IZHvT24jUN6U_ShvmyalGashZhnkovXrc1f9DTjotYQgqslbsv6xUZl7IgsdRDH-i7nyR3EJNqhhbFnVjd7xbJQ8Q_nkjcfW9cV8CnnDr30zIjKelT_AEjrpBkfyXd4kVhdtzb3PZRcO2OeQ3xnkuLbdXpmkV0QzAXxFzLamN1tLN5OD--ECivVJuRTzo9RE9RIFwnAeT3_5Ico1mJMK335mfYZlWAwn4ccn7QcajO4gYoJKVdlpuKEEHWrppbT0q8OaEU1yIuIKlKUTgOxauUi0lFw2B03VXBAMa27F5YSK_wWFnh5u5FzxDBPYO3IVAt4nLZCaooihAcM5HNBc56jTcWeWvLFJhvxwkM4OcpAReTgYrzTPwsGWeN-GKNMACVagxw9fYcO1U6aKYKOWx_4reGXWRmoN1IzWhTkCu4ZniLQ5Hv6FbIz7mhR1ufrK7uD2DdFFy4p4U4bZROhAxm5_mZ4FAPrR5CxGTiUz_E7cqX2GaeS8vHUcqjq0U0"
+  },
+  "status": {
+    "block_height": 2018600,
+    "block_indep_hash": "w3EayqSpTouZPTkTKaEC2kXQgZj5wQKxae7mbkfxUV0q8Fi8CJw-jacXB85SwoFj",
+    "number_of_confirmations": 50
+  },
+  "block": {
+    "height": 2018600,
+    "timestamp": 1791649272,
+    "indep_hash": "w3EayqSpTouZPTkTKaEC2kXQgZj5wQKxae7mbkfxUV0q8Fi8CJw-jacXB85SwoFj",
+    "previous_block": "7By4OmqH2Bi57dICCDNXWCnKMgAqbb8HGo3IY3OPhjFpCglx6M3uHTLgXsKMkBvr",
+    "txs": [
+      "7U4vVDnTAXnCTSqm9-9K_ErhYgHnDcreSD6xx8TLkAo",
+      "RVm4I12y0xglS2QPBQNlU9BGJbpUzI7Jt_vMeI6V_kc",
+      "P_-6ZMhZCG7XgCUlbVy-KpoYQxIX2xHgrwyT8TOsopQ"
+    ]
+  }
+}

@@ -9,6 +9,10 @@ description = "MCP server for qub — create, read, and verify time-locked qubs"
 
 [dependencies]
 qub-core = { workspace = true, default-features = true }
+# The verifier library: storage-transaction binding, the fail-closed timing
+# verdict and the forecast-series report. The same code `qub-verify` runs, so
+# an agent and a recipient with the CLI reach the same verdict.
+qub-verify = { path = "../qub-verify" }
 reqwest = { version = "0.12", default-features = false, features = [
   "rustls-tls",
   "json",
@@ -22,6 +26,17 @@ base64 = { workspace = true }
 # version is feature-gated `wasm_js`; the MCP tool is native so it
 # transparently uses the OS RNG.
 getrandom = { workspace = true }
+# SHA3-256 for the keyed operation id and the API-key fingerprint stored in
+# the operation journal (already the workspace's pinned hash).
+sha3 = { workspace = true }
+
+[dev-dependencies]
+# SHA-256 for the recovery tests' mock Worker, which derives `scope_id`
+# exactly as the real Worker does, and SHA-256/384 + RSA for the mock Arweave
+# gateways of the public-mode tests, which sign a storage transaction for
+# whatever the binary uploads. Never used by the binary.
+sha2 = { workspace = true }
+rsa = { workspace = true }
 
 [lints]
 workspace = true

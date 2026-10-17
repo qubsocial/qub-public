@@ -401,7 +401,7 @@ mod tests {
         .expect("seal ok");
         let sealed = out.sealed_cbor.parse().expect("parses");
         assert_eq!(sealed.qub_id(), &out.qub_id);
-        assert!(!sealed.tlock_ciphertext().is_empty());
+        assert_ne!(sealed.tlock_ciphertext(), []);
     }
 
     #[test]

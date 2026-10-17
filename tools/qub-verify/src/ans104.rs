@@ -85,8 +85,10 @@ impl std::error::Error for Ans104Error {}
 
 /// A deep-hash input: a leaf byte string or a (possibly nested) list, exactly
 /// the shape the TypeScript `DeepHashChunk` models.
-enum DeepHashChunk<'a> {
+pub(crate) enum DeepHashChunk<'a> {
+    /// A leaf byte string.
     Blob(&'a [u8]),
+    /// A (possibly nested) list of chunks.
     List(Vec<Self>),
 }
 
@@ -96,7 +98,7 @@ fn sha384(data: &[u8]) -> [u8; 48] {
     hasher.finalize().into()
 }
 
-fn sha256(data: &[u8]) -> [u8; 32] {
+pub(crate) fn sha256(data: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(data);
     hasher.finalize().into()
@@ -104,7 +106,7 @@ fn sha256(data: &[u8]) -> [u8; 32] {
 
 /// Arweave `deepHash`: `blob`/`list`-tagged recursive SHA-384 (§16.8). Byte-for-
 /// byte equivalent to `ans104.ts`'s `deepHash` and to arweave-js's reference.
-fn deep_hash(chunk: &DeepHashChunk) -> [u8; 48] {
+pub(crate) fn deep_hash(chunk: &DeepHashChunk) -> [u8; 48] {
     match chunk {
         DeepHashChunk::Blob(data) => {
             let mut tag = Vec::with_capacity(4 + 20);

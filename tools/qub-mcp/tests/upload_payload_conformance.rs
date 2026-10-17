@@ -63,7 +63,11 @@ fn synthetic_upload_body() -> Value {
         "wrapped_cbor_base64": "AQID", // arbitrary base64 — schema only requires `type: string`
         "qub_id_hex": "0".repeat(64), // 64 lowercase-hex chars matches `^[0-9a-f]{64}$`
         "unlock_at": 2_000_000_000_i64,
-        "device_id": "mcp-server",
+        // The MCP sends its installation device id (`state.rs`): 32
+        // lowercase hex, generated once per state directory. The old
+        // literal "mcp-server" failed the Worker's pattern check, so every
+        // real create_qub was rejected with 400 `invalid_device_id`.
+        "device_id": "0123456789abcdef0123456789abcdef",
         "content_size": 1234,
     })
 }
@@ -148,5 +152,30 @@ fn mcp_upload_body_qub_id_hex_matches_schema_pattern() {
             .chars()
             .all(|c| c.is_ascii_hexdigit() && (c.is_ascii_digit() || c.is_ascii_lowercase())),
         "qub_id_hex must be lowercase hex: {qub_id}"
+    );
+}
+
+#[test]
+fn mcp_upload_body_device_id_matches_schema_pattern() {
+    let schema = upload_request_schema();
+    let pattern = schema["properties"]["device_id"]["pattern"]
+        .as_str()
+        .expect("device_id.pattern must exist");
+    assert_eq!(
+        pattern, "^[a-f0-9]{32}$",
+        "schema pattern changed — update the MCP's device id generator (src/state.rs)"
+    );
+    let body = synthetic_upload_body();
+    let device_id = body["device_id"].as_str().unwrap();
+    assert_eq!(
+        device_id.len(),
+        32,
+        "device_id must be 32 chars: {device_id}"
+    );
+    assert!(
+        device_id
+            .bytes()
+            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')),
+        "device_id must be lowercase hex: {device_id}"
     );
 }

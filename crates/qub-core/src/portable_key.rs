@@ -1317,7 +1317,7 @@ mod tests {
             blob.sk_ciphertext().len() > 1,
             "ciphertext must exceed the 0/1 replacement constants"
         );
-        assert!(!blob.wraps().is_empty());
+        assert_ne!(blob.wraps(), []);
 
         let cbor = blob.to_cbor().expect("blob encodes");
         let bytes = cbor.as_bytes().to_vec();

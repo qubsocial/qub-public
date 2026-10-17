@@ -1015,8 +1015,8 @@ fn seal_unlock_full_pipeline_real_drand() {
 }
 
 // =============================================================================
-// C1 round-binding tests (the displayed unlock time must be the round that
-// actually gates decryption)
+// C1 round-binding tests (the displayed unlock time must name the stanza's
+// round; decrypt then refuses a body not encrypted to that round)
 // =============================================================================
 
 /// drand quicknet chain hash — must be set on the sealed qub so the
@@ -1170,9 +1170,9 @@ fn legacy_ceil_round_qub_still_unlocks() {
 /// with `unlock_at` but whose tlock ciphertext is actually bound to a
 /// different (already-past) round is rejected. This is the malicious-
 /// creator scenario — a future countdown over a ciphertext anyone can
-/// already decrypt. The stanza round is the cryptographically meaningful
-/// one, so the check reads it back via `decrypt_header` and fires before
-/// any decryption.
+/// already decrypt. The check reads the stanza round back (via
+/// `ciphertext_round`) and fires before any decryption; decrypt separately
+/// refuses a body that is not consistent with its labelled round.
 #[test]
 #[cfg_attr(
     miri,

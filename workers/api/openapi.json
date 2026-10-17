@@ -85,9 +85,112 @@
       }
     },
     "schemas": {
+      "TrialUsage": {
+        "type": "object",
+        "description": "Balance of a Builder trial grant. One grant per verified owner is shared by every key, agent and device bound to it: 10 publications and 10,000 authenticated retrievals in total, never per key and never per period. A reservation whose publication outcome is still being reconciled counts as used until the reconciler proves no durable publication exists.",
+        "required": [
+          "funding_source",
+          "grant_id",
+          "status",
+          "qubs_limit",
+          "qubs_used",
+          "qubs_remaining",
+          "reads_limit",
+          "reads_used",
+          "reads_remaining"
+        ],
+        "properties": {
+          "funding_source": {
+            "type": "string",
+            "enum": ["trial_grant"]
+          },
+          "grant_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "suspended", "revoked"]
+          },
+          "qubs_limit": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "qubs_used": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "qubs_remaining": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reads_limit": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reads_used": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reads_remaining": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "UploadOperation": {
+        "type": "object",
+        "description": "Outcome of the upload identified by the caller's credential and `Idempotency-Key`. `scope: grant` means the operation belongs to the trial grant, so any key of that grant (including a rotated successor) sees it; `scope: key` means it belongs to the presenting paid key only.",
+        "required": ["scope", "scope_id", "state"],
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": ["grant", "key"]
+          },
+          "scope_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "Opaque, stable identifier of the caller's idempotency scope, present on every answer (including `unknown`). It is identical for every key of one trial grant, and differs between two grants, between a grant and a paid key, and between two paid keys. Record it before first sending an upload: resending the same request with the same `Idempotency-Key` is a replay of one publication only while this value is unchanged. If it differs from the recorded value, this answer says nothing about the original upload, and a resend would be executed as a new publication — do not resend automatically."
+          },
+          "state": {
+            "type": "string",
+            "enum": ["unknown", "in_flight", "abandoned_refunded", "published"],
+            "description": "`published`: the exact signed transaction is durable and will be published; `tx_id` is final. `in_flight`: a request still holds the reservation — do not resend yet. `abandoned_refunded`: the attempt ended without publishing and its slot was returned; resending the same request with the same key is safe. `unknown`: no record of this operation."
+          },
+          "tx_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$",
+            "description": "Present exactly when `state` is `published`."
+          }
+        }
+      },
+      "TrialIssueResponse": {
+        "type": "object",
+        "description": "A trial key was provisioned. Exchange `invoice_id` + `retrieval_secret` at `POST /api/v1/api-keys/provisioned` within 15 minutes to receive the raw key once. An idempotent replay omits `retrieval_secret` and sets `retrieval_unavailable_on_replay`; recover a key whose delivery was lost by replacing it from the dashboard.",
+        "required": ["grant_id", "invoice_id", "usage"],
+        "properties": {
+          "grant_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "invoice_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "retrieval_secret": {
+            "type": "string"
+          },
+          "retrieval_unavailable_on_replay": {
+            "type": "boolean"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/TrialUsage"
+          }
+        }
+      },
       "Error": {
         "type": "object",
-        "description": "Standard error envelope. Every 4xx/5xx response carries a stable, machine-readable `code` plus an advisory English `error` message. Branch on `code`; treat `error` as human-facing text that may change.\n\n**Canonical codes** clients are most likely to branch on:\n\n- `SESSION_REQUIRED`, `SESSION_INVALID`, `SESSION_EXPIRED`, `SESSION_REVOKED` — 401 browser-session failures.\n- `STEP_UP_REQUIRED` — 401, session valid but mailbox proof is older than 10 minutes.\n- `SESSION_DEVICE_MISMATCH` — 403, a retained anonymous/quota device locator differs from the session device.\n- `SESSION_UNAVAILABLE` — 503, SessionDO/binding/account-index authority unavailable; protected routes fail closed without a `device_link` fallback.\n- `invalid_json`, `invalid_unlock_at`, `invalid_title`, `invalid_sender_label`, `invalid_text` — 400, malformed request body.\n- `invalid_content_size` — 400, `content_size` must be a positive integer JSON number matching the decoded payload length.\n- `invalid_device_id`, `invalid_email` — 400, body field shape violation (`device_id` must be 32 lowercase hex; `email` must be ASCII-only with no mixed-script IDN domain).\n- `IDEMPOTENCY_KEY_INVALID` — 400, invalid `Idempotency-Key` header.\n- `IDEMPOTENCY_IN_FLIGHT` — 409, concurrent or fail-safe-fenced retry against an in-flight idempotency claim.\n- `IDEMPOTENCY_KEY_CONFLICT` — 409, one idempotency key was reused for a different semantic mutation.\n- `IDEMPOTENCY_UNAVAILABLE` — 503, the strong idempotency authority is unavailable; billing and irreversible routes fail closed.\n- `RATE_LIMIT_IP`, `RATE_LIMIT_KEY`, `RATE_LIMIT_API_KEY`, `rate_limited` — 429.\n- `DAILY_KEY_LIMIT`, `DAILY_ACCOUNT_LIMIT` — 429, daily Arweave caps.\n- `CIRCUIT_BREAKER` — 503, global Arweave daily ceiling tripped.\n- `READS_EXHAUSTED` — 429, Enterprise / legacy hard cap.\n- `MONTHLY_CAP_REACHED`, `QUOTA_EXHAUSTED` — 402 billing/quota ceilings.\n- `TIER_INSUFFICIENT` — 403, route requires a paid plan.\n- `API_KEY_DISABLED`, `IP_NOT_ALLOWED`, `INSUFFICIENT_SCOPE`, `invalid_api_key` — API-key middleware rejections.\n- `TOKEN_USED` — 410, single-use mailbox capability replay.",
+        "description": "Standard error envelope. Every 4xx/5xx response carries a stable, machine-readable `code` plus an advisory English `error` message. Branch on `code`; treat `error` as human-facing text that may change.\n\n**Canonical codes** clients are most likely to branch on:\n\n- `SESSION_REQUIRED`, `SESSION_INVALID`, `SESSION_EXPIRED`, `SESSION_REVOKED` — 401 browser-session failures.\n- `STEP_UP_REQUIRED` — 401, session valid but mailbox proof is older than 10 minutes.\n- `SESSION_DEVICE_MISMATCH` — 403, a retained anonymous/quota device locator differs from the session device.\n- `SESSION_UNAVAILABLE` — 503, SessionDO/binding/account-index authority unavailable; protected routes fail closed without a `device_link` fallback.\n- `invalid_json`, `invalid_unlock_at`, `invalid_title`, `invalid_sender_label`, `invalid_text` — 400, malformed request body.\n- `invalid_content_size` — 400, `content_size` must be a positive integer JSON number matching the decoded payload length.\n- `invalid_device_id`, `invalid_email` — 400, body field shape violation (`device_id` must be 32 lowercase hex; `email` must be ASCII-only with no mixed-script IDN domain).\n- `IDEMPOTENCY_KEY_INVALID` — 400, invalid `Idempotency-Key` header.\n- `IDEMPOTENCY_IN_FLIGHT` — 409, concurrent or fail-safe-fenced retry against an in-flight idempotency claim.\n- `IDEMPOTENCY_KEY_CONFLICT` — 409, one idempotency key was reused for a different semantic mutation.\n- `IDEMPOTENCY_UNAVAILABLE` — 503, the strong idempotency authority is unavailable; billing and irreversible routes fail closed.\n- `RATE_LIMIT_IP`, `RATE_LIMIT_KEY`, `RATE_LIMIT_API_KEY`, `rate_limited` — 429.\n- `DAILY_KEY_LIMIT`, `DAILY_ACCOUNT_LIMIT` — 429, daily Arweave caps.\n- `CIRCUIT_BREAKER` — 503, global Arweave daily ceiling tripped.\n- `READS_EXHAUSTED` — 429, Enterprise / legacy hard cap.\n- `MONTHLY_CAP_REACHED`, `QUOTA_EXHAUSTED` — 402 billing/quota ceilings.\n- `TIER_INSUFFICIENT` — 403, route requires a paid plan.\n- `API_KEY_DISABLED`, `IP_NOT_ALLOWED`, `INSUFFICIENT_SCOPE`, `invalid_api_key` — API-key middleware rejections.\n- `TOKEN_USED` — 410, single-use mailbox capability replay.\n\n**Builder trial codes**: `TRIAL_QUBS_EXHAUSTED` / `TRIAL_READS_EXHAUSTED` (402), `TRIAL_RATE_LIMITED` / `TRIAL_COOLDOWN` (429, honour `Retry-After`), `TRIAL_SCOPE_UNSUPPORTED` (403, the route does not accept trial keys — e.g. `/seal`, webhooks), `TRIAL_CREDENTIAL_ON_PUBLIC_ROUTE` (403, use the authenticated read), `TRIAL_GRANT_SUSPENDED` (403), `TRIAL_NOT_ELIGIBLE` / `TRIAL_KEY_LIMIT` (409), `TRIAL_ISSUANCE_PAUSED` / `TRIAL_UNAVAILABLE` (503, fail closed), `TRIAL_ISSUANCE_PENDING` (503, issuance stopped; a retry with the same `Idempotency-Key` is always safe) and `TRIAL_ISSUANCE_INCONSISTENT` (500); see `TrialIssuancePhaseError`.",
         "required": ["error", "code"],
         "properties": {
           "code": {
@@ -103,6 +206,43 @@
             "description": "Per-request correlation ID, when available. Echoes the `X-Request-Id` response header."
           }
         }
+      },
+      "TrialIssuancePhaseError": {
+        "type": "object",
+        "description": "Error envelope of `POST /api/v1/trial/grant` and `POST /api/v1/trial/keys`. These routes do not answer `TRIAL_UNAVAILABLE`: a request may hold a grant reservation or a key seat, taken by itself or by an earlier attempt with the same `Idempotency-Key`, and no step before the reservation can prove it holds nothing. So every authority failure inside issuance answers `TRIAL_ISSUANCE_PENDING` (503, `Retry-After: 5`), and `phase` names the step that failed. A retry with the same `Idempotency-Key` is always safe: it adopts whatever the request holds and never makes a second grant reservation or takes a second seat. The phases `configuration`, `lock`, `state_lookup`, `attempt_lookup`, `risk_check` and `mailbox_read` stop before the request can learn what it holds. From `grant_reserve` (a reservation call whose answer was lost) the retry makes the reservation if it was not made and adopts it if it was. From most later phases the retry can finish with the 201. From `key_confirm` it delivers the key only if the delivery was not recorded, and otherwise answers 409 `TRIAL_NOT_ELIGIBLE` / `key_unavailable`. From `key_retire` it finishes retiring the seat and answers that 409; a new request can then issue a key while the grant has a free seat (a retired seat stays counted, so at the limit replace a key instead). `TRIAL_ISSUANCE_INCONSISTENT` (500, `phase` `grant_create` or `key_provision`) is a permanent ledger conflict, not an outage: a retry issues nothing twice but fails the same way until support resolves it, so do not retry in a loop.",
+        "allOf": [{ "$ref": "#/components/schemas/Error" }],
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": [
+              "configuration",
+              "lock",
+              "state_lookup",
+              "attempt_lookup",
+              "risk_check",
+              "mailbox_read",
+              "grant_reserve",
+              "mailbox_claim",
+              "grant_create",
+              "key_seat",
+              "key_bind",
+              "issuance_check",
+              "key_provision",
+              "key_confirm",
+              "key_retire"
+            ],
+            "description": "The issuance step that failed. `configuration` through `mailbox_read` stop before the request learns what it holds; `grant_reserve` is the grant reservation itself, whose answer was lost: it may have been made."
+          }
+        },
+        "if": {
+          "properties": {
+            "code": {
+              "enum": ["TRIAL_ISSUANCE_PENDING", "TRIAL_ISSUANCE_INCONSISTENT"]
+            }
+          },
+          "required": ["code"]
+        },
+        "then": { "required": ["phase"] }
       },
       "BrowserSessionError": {
         "type": "object",
@@ -568,6 +708,29 @@
           }
         }
       },
+      "BuilderCheckoutRateResponse": {
+        "type": "object",
+        "required": [
+          "base_monthly_usd",
+          "included_seals",
+          "included_reads",
+          "seal_overage_usd",
+          "read_overage_unit",
+          "read_overage_usd"
+        ],
+        "properties": {
+          "base_monthly_usd": { "type": "number", "const": 29 },
+          "included_seals": { "type": "integer", "const": 1000 },
+          "included_reads": { "type": "integer", "const": 100000 },
+          "seal_overage_usd": {
+            "type": "number",
+            "const": 0.06,
+            "description": "USD per seal above the included allowance."
+          },
+          "read_overage_unit": { "type": "integer", "const": 100000 },
+          "read_overage_usd": { "type": "number", "const": 0.5 }
+        }
+      },
       "LightningQuoteResponse": {
         "type": "object",
         "required": [
@@ -953,8 +1116,13 @@
       },
       "MagicLinkRequest": {
         "type": "object",
-        "required": ["email", "device_id"],
+        "required": ["email", "device_id", "turnstile_token"],
         "properties": {
+          "turnstile_token": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Cloudflare Turnstile token. Required on every request: this endpoint sends email and has no API-key bypass."
+          },
           "email": {
             "type": "string",
             "format": "email",
@@ -1510,6 +1678,8 @@
           "qubs_total",
           "seals_used_this_period",
           "reads_used_this_period",
+          "seal_overage_usd",
+          "read_overage_per_100k_usd",
           "max_monthly_charge_usd",
           "billing_mode",
           "billing_status",
@@ -1519,7 +1689,8 @@
           "customer_disabled",
           "effective_disabled",
           "disable_reason",
-          "admin_locked"
+          "admin_locked",
+          "trial"
         ],
         "properties": {
           "id": {
@@ -1536,7 +1707,8 @@
           },
           "tier": {
             "type": "string",
-            "enum": ["free", "builder", "enterprise"]
+            "enum": ["free", "builder", "enterprise", "trial"],
+            "description": "`trial` is a Builder trial key: non-billable, bound to a trial grant, and limited to the `upload` and `read` scopes."
           },
           "created_at": {
             "type": "integer"
@@ -1557,14 +1729,22 @@
           "reads_used_this_period": {
             "type": "integer"
           },
+          "seal_overage_usd": {
+            "type": ["number", "null"],
+            "description": "USD per seal above the 1,000 included each month (0.06). Null for prepaid keys."
+          },
+          "read_overage_per_100k_usd": {
+            "type": ["number", "null"],
+            "description": "USD per complete 100,000 reads above 100,000 included each month (0.50). Null for prepaid keys."
+          },
           "max_monthly_charge_usd": {
             "type": ["number", "null"],
-            "description": "Customer-configurable monthly Stripe-charge cap (USD) for stripe_metered keys. Always null for prepaid_hard_cap keys, which cannot overage."
+            "description": "Customer-configurable monthly overage cap (USD), excluding the $29 base fee. Always null for prepaid_hard_cap keys, which cannot overage."
           },
           "billing_mode": {
             "type": "string",
-            "enum": ["stripe_metered", "prepaid_hard_cap"],
-            "description": "Determines whether usage above the included allowance is Stripe-metered or rejected until manual renewal."
+            "enum": ["stripe_metered", "prepaid_hard_cap", "trial_grant"],
+            "description": "Determines whether usage above the included allowance is Stripe-metered or rejected until manual renewal. `trial_grant` keys are never billed: they draw only on their trial grant (see `trial`) and are refused when it is spent."
           },
           "billing_status": {
             "type": "string",
@@ -1612,6 +1792,17 @@
           "admin_locked": {
             "type": "boolean",
             "description": "Operator refund/abuse lock that the customer cannot clear."
+          },
+          "trial": {
+            "description": "Balance of the trial grant a `tier: \"trial\"` key draws on, shared by every key of that grant. Null for every other tier. Also null for a trial key when the grant ledger could not be read for this response, and in the response to a PATCH; read `GET /api/v1/api-keys/mine` again for the balance. For a trial key the per-key `qubs_remaining` / `qubs_total` / `*_used_this_period` fields are not the allowance: use this object.",
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TrialUsage"
+              }
+            ]
           }
         }
       },
@@ -2043,6 +2234,708 @@
     }
   },
   "paths": {
+    "/api/v1/trial/usage": {
+      "get": {
+        "x-audience": "external",
+        "operationId": "getTrialUsage",
+        "summary": "Trial grant balance for the presenting key",
+        "description": "Returns the remaining publications and reads of the trial grant the presenting key draws on. Spends nothing — it is not a retrieval — and has its own rate limit.",
+        "tags": ["API Keys"],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Grant balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrialUsage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "API key required or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Disabled key or IP not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The presenting key is not a trial key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`TRIAL_UNAVAILABLE` — the grant ledger is temporarily unreachable; retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/upload/operation": {
+      "get": {
+        "x-audience": "external",
+        "operationId": "getUploadOperation",
+        "summary": "Recover an upload's outcome without its tx_id",
+        "description": "Resolves the caller's credential plus the `Idempotency-Key` it sent to `POST /api/v1/upload` into that upload's durable outcome, so a client whose process died after sending can learn the `tx_id` without resending bytes. Read-only: spends no publication and no read. For trial keys the operation belongs to the grant (`scope: grant`) and survives key rotation; for paid keys it belongs to the key (`scope: key`), so a rotated paid key cannot see its predecessor's operations — clients must not resend automatically in that case.",
+        "tags": ["Upload"],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Required idempotency key. MUST match `^[A-Za-z0-9._-]{1,255}$`.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,255}$",
+              "maxLength": 255
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Operation state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadOperation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or malformed `Idempotency-Key`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "API key required or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Disabled key, IP not allowed, or `INSUFFICIENT_SCOPE`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Operation state temporarily unavailable; retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/trial/grant": {
+      "post": {
+        "x-audience": "internal",
+        "operationId": "claimTrialGrant",
+        "summary": "Claim the account's Builder trial and its first key",
+        "description": "One non-billable grant per verified owner: 10 shared upload publications and 10,000 shared authenticated reads, no expiry, no overage, no conversion. Requires a recent mailbox proof, an exact same-origin request and Turnstile. Fails closed: refused unless issuance is enabled, every budget ceiling and unit-cost estimate is set, the operator has not paused it, and the budget can reserve the grant. A mailbox that carries a live trial claim — including one left by a deleted account — is not eligible. The claim lasts two years from its last refresh (enrolment; an email change into the mailbox by a grant holder; or user-requested deletion of an account at it, which restarts a live claim's window and, for a grant holder, re-establishes a lapsed one); after that the mailbox can enrol again. If the grant's first key was written but its delivery did not arrive, a retry of the same request is answered `409 TRIAL_NOT_ELIGIBLE` with `reason: key_unavailable` and the key is obtained by replacing it; a different request is answered `already_issued`.",
+        "tags": ["API Keys"],
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Required idempotency key. MUST match `^[A-Za-z0-9._-]{1,255}$`.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,255}$",
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["turnstile_token"],
+                "properties": {
+                  "turnstile_token": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Grant claimed and first key provisioned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrialIssueResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`SESSION_*` browser-session failure, or `STEP_UP_REQUIRED` (mailbox proof older than 10 minutes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an exact same-origin request, `TURNSTILE_FAILED`, or `TRIAL_GRANT_SUSPENDED`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`TRIAL_NOT_ELIGIBLE` (`reason`: `already_issued`, `mailbox_claimed`, `no_grant`, `key_unavailable`) or `TRIAL_KEY_LIMIT`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`TRIAL_COOLDOWN` — a velocity limit; honour `Retry-After`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`TRIAL_ISSUANCE_INCONSISTENT`: a trial ledger record conflicts with this request permanently (`phase: grant_create`, the grant ledger names another account; `phase: key_provision`, the key journal answers for, or conflicts with, another key or account). Nothing was delivered. A retry issues nothing twice but fails the same way until support resolves it: do not retry in a loop.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrialIssuancePhaseError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`TRIAL_ISSUANCE_PAUSED` (issuance off, ceilings or estimates unset, operator pause, or budget shortfall), or `TRIAL_ISSUANCE_PENDING` with a `phase` for any authority failure inside issuance: retry with the same `Idempotency-Key`, which is always safe (see `TrialIssuancePhaseError`). A 5xx is never stored for replay, so that retry runs again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Present on `TRIAL_ISSUANCE_PENDING`: suggested retry delay in seconds.",
+                "schema": {
+                  "type": "integer",
+                  "const": 5
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrialIssuancePhaseError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/trial/keys": {
+      "post": {
+        "x-audience": "internal",
+        "operationId": "addTrialKey",
+        "summary": "Add a key to the account's trial grant",
+        "description": "Provisions another key on the same grant. A grant has at most 5 key seats, ever, and one key is issued per seat (`TRIAL_KEY_LIMIT` after that); rotation and replacement keep a key's seat and deleting a key does not free one. The cap is on seats: for the hour of a rotation's grace both the old and the new secret authenticate. A request that fails with `503` before its key seat is settled does not spend the seat: retry it with the same `Idempotency-Key` and it finishes the same key and returns its retrieval secret. A seat's retrieval secret goes out in at most one response; a request that reaches a seat already settled (its key was delivered through another request, its own delivery was lost after the seat settled, or the seat was retired) is answered `409 TRIAL_NOT_ELIGIBLE` with `reason: key_unavailable`, and a key that was never received is recovered by replacing it. If the grant was suspended or revoked meanwhile, the answer is `403 TRIAL_GRANT_SUSPENDED`. Every key shares the grant's allowance and its upload idempotency scope; an extra key never adds allowance. Refused with `TRIAL_ISSUANCE_PAUSED` while the campaign is paused, although the existing grant and its keys keep working.",
+        "tags": ["API Keys"],
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Required idempotency key. MUST match `^[A-Za-z0-9._-]{1,255}$`.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,255}$",
+              "maxLength": 255
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["turnstile_token"],
+                "properties": {
+                  "turnstile_token": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Key provisioned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrialIssueResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`SESSION_*` browser-session failure, or `STEP_UP_REQUIRED` (mailbox proof older than 10 minutes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an exact same-origin request, `TURNSTILE_FAILED`, or `TRIAL_GRANT_SUSPENDED`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`TRIAL_NOT_ELIGIBLE` (`reason`: `already_issued`, `mailbox_claimed`, `no_grant`, `key_unavailable`) or `TRIAL_KEY_LIMIT`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`TRIAL_COOLDOWN` — a velocity limit; honour `Retry-After`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`TRIAL_ISSUANCE_INCONSISTENT`: a trial ledger record conflicts with this request permanently (`phase: grant_create`, the grant ledger names another account; `phase: key_provision`, the key journal answers for, or conflicts with, another key or account). Nothing was delivered. A retry issues nothing twice but fails the same way until support resolves it: do not retry in a loop.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrialIssuancePhaseError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`TRIAL_ISSUANCE_PAUSED` (issuance off, ceilings or estimates unset, operator pause, or budget shortfall), or `TRIAL_ISSUANCE_PENDING` with a `phase` for any authority failure inside issuance: retry with the same `Idempotency-Key`, which is always safe (see `TrialIssuancePhaseError`). A 5xx is never stored for replay, so that retry runs again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Present on `TRIAL_ISSUANCE_PENDING`: suggested retry delay in seconds.",
+                "schema": {
+                  "type": "integer",
+                  "const": 5
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrialIssuancePhaseError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/trial/verify": {
+      "post": {
+        "x-audience": "internal",
+        "operationId": "sendTrialVerification",
+        "summary": "Send a trial-purpose mailbox code",
+        "description": "Sends a step-up mailbox code that completes through `POST /api/v1/auth/step-up/code/verify`. The send is gated by trial issuance state, the pre-enrolment budget and its own rate limits, so trial acquisition traffic never consumes ordinary sign-in capacity.",
+        "tags": ["Auth"],
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "locale": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Code sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Browser-session failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an exact same-origin request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`TRIAL_COOLDOWN` or `rate_limited`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`TRIAL_ISSUANCE_PAUSED` or `TRIAL_UNAVAILABLE`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/trial/{path}": {
+      "get": {
+        "x-audience": "admin",
+        "operationId": "adminTrialSummary",
+        "summary": "Trial budget and issuance summary",
+        "description": "`summary` returns the configured ceilings, the budget ledger and today's trial counters; `summary?fold=1` first folds each grant's realised usage into the ledger and flags a shortfall.",
+        "tags": ["Admin"],
+        "security": [
+          {
+            "adminSecret": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "description": "`summary` (GET); `pause`, `resume`, `estimates` or `grants/<grant_id>/<action>` (POST).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": ["summary"]
+            }
+          },
+          {
+            "name": "fold",
+            "in": "query",
+            "description": "`1` folds every grant's realised usage into the budget ledger before summarising.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["1"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Summary.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`access_denied` — a Cloudflare Access token was presented and did not verify. The reason is logged, not returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Ceilings not configured (fold only).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Ledger unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "x-audience": "admin",
+        "operationId": "adminTrialAction",
+        "summary": "Operate the Builder trial",
+        "description": "`pause` / `resume` stop or restart issuance (new grants and additional keys on existing grants) and trial verification sends; `estimates` sets unit-cost estimates (micro-USD: `grant_microusd`, `verify_microusd`, `seal_microusd`, `read_microusd`, each a positive integer — any other value is a `400` and nothing is stored) and revalues every outstanding reservation; `grants/<grant_id>/{suspend|unsuspend|revoke|adjust}` acts on one grant (`adjust` raises `seals_delta` / `reads_delta` up to the trial ceiling and never resets usage). Every action requires a written `reason` and is audited. Nothing here creates a grant or cancels an issued grant's remaining allowance.",
+        "tags": ["Admin"],
+        "security": [
+          {
+            "adminSecret": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "description": "`summary` (GET); `pause`, `resume`, `estimates` or `grants/<grant_id>/<action>` (POST).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["reason"],
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Applied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing reason, unknown action or invalid values.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid admin authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`access_denied` — a Cloudflare Access token was presented and did not verify. The reason is logged, not returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown grant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revoked grant, adjustment above the ceiling, or ceilings not configured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Ledger unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/upload-auth": {
       "post": {
         "x-audience": "external",
@@ -2089,8 +2982,8 @@
               }
             }
           },
-          "403": {
-            "description": "Turnstile verification failed.",
+          "401": {
+            "description": "`invalid_api_key` — an API key was presented and is not a known key.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2099,12 +2992,49 @@
               }
             }
           },
-          "429": {
-            "description": "Rate limited.",
+          "402": {
+            "description": "A Pro entitlement with no qubs left. Eligibility shape, with `allowed: false` and `reason: \"entitlement_exhausted\"`.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "$ref": "#/components/schemas/UploadAuthResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Two shapes. Turnstile verification failed: the eligibility shape with `allowed: false` and `reason: \"turnstile_failed\"`, which carries no `code`. An API key was refused (`API_KEY_DISABLED`, `IP_NOT_ALLOWED`, `INSUFFICIENT_SCOPE`, `TRIAL_SCOPE_UNSUPPORTED`): the standard error envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/UploadAuthResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "`content_size` is above the limit for the tier, or above the 100 KB ceiling. Eligibility shape, with `allowed: false`, `reason: \"content_too_large\"` and the applicable `max_size`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadAuthResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited. Same eligibility shape, with `allowed: false` and `reason: \"rate_limited\"`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadAuthResponse"
                 }
               }
             }
@@ -2117,7 +3047,7 @@
         "x-audience": "external",
         "operationId": "upload",
         "summary": "Upload already-sealed qub bytes",
-        "description": "Accepts already-sealed bytes: an OuterWrapper for private delivery or bare SealedQubCbor for public delivery. Before acknowledgement, the artifact and exact individual-transaction publication state are synchronously written to durable R2. The route then attempts a transparency-log append when `LOG_DO` is configured; only a successful append adds `log_seq`, `receipt`, and `anchor_status` to the response, while append failure is currently fail-soft. The pre-signed individual permanent-storage transaction is posted asynchronously. `device_id` remains the anonymous quota/entitlement locator. A valid matching browser session may select the linked-account quota/history branch; without a cookie the route stays anonymous and MUST NOT follow `device_link`. A presented mismatched cookie returns `SESSION_DEVICE_MISMATCH`; other presented invalid/expired/revoked/unavailable authority fails closed instead of silently downgrading. Browser clients also supply Turnstile; API-key callers use their separate Bearer authority. A valid `Idempotency-Key` is required. The 24-hour replay is semantic-operation-bound: retry-ephemeral wrapper bytes/nonces and Turnstile tokens do not create a second mutation, while incompatible reuse returns `IDEMPOTENCY_KEY_CONFLICT`. Missing keys return `IDEMPOTENCY_KEY_REQUIRED`; strong idempotency failure returns `IDEMPOTENCY_UNAVAILABLE` without uploading.",
+        "description": "Accepts already-sealed bytes: an OuterWrapper for private delivery or bare SealedQubCbor for public delivery. Before acknowledgement, the artifact and exact individual-transaction publication state are synchronously written to durable R2. The route then attempts a transparency-log append when `LOG_DO` is configured; only a successful append adds `log_seq`, `receipt`, and `anchor_status` to the response, while append failure is currently fail-soft. The pre-signed individual permanent-storage transaction is posted asynchronously. `device_id` remains the anonymous quota/entitlement locator. A valid matching browser session may select the linked-account quota/history branch; without a cookie the route stays anonymous and MUST NOT follow `device_link`. A presented mismatched cookie returns `SESSION_DEVICE_MISMATCH`; other presented invalid/expired/revoked/unavailable authority fails closed instead of silently downgrading. Browser clients also supply Turnstile; API-key callers use their separate Bearer authority. A valid `Idempotency-Key` is required. The 24-hour replay is semantic-operation-bound: retry-ephemeral wrapper bytes/nonces and Turnstile tokens do not create a second mutation, while incompatible reuse returns `IDEMPOTENCY_KEY_CONFLICT`. Missing keys return `IDEMPOTENCY_KEY_REQUIRED`; strong idempotency failure returns `IDEMPOTENCY_UNAVAILABLE` without uploading. API keys need the `upload` or `seal` scope. A Builder trial key spends one publication of its grant per durable publication (10 in total, at most 3 new per minute); its operations are scoped to the grant, so a retry with the same `Idempotency-Key` from any key of the grant — including a rotated successor — replays rather than republishes. For a trial key the replay is also bound to the exact uploaded bytes: resend the same `wrapped_cbor_base64`, because different bytes under a used key return `IDEMPOTENCY_KEY_CONFLICT`. Use `GET /api/v1/upload/operation` to recover an outcome without its `tx_id`.",
         "tags": ["Upload"],
         "security": [
           {
@@ -2151,6 +3081,16 @@
           }
         },
         "responses": {
+          "503": {
+            "description": "`TRIAL_UNAVAILABLE`, `QUOTA_UNAVAILABLE` or `STORAGE_UNAVAILABLE` — fail closed; retry with the same `Idempotency-Key`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "200": {
             "description": "Upload successful.",
             "content": {
@@ -2172,7 +3112,7 @@
             }
           },
           "402": {
-            "description": "Payment required — entitlement exhausted.",
+            "description": "Entitlement exhausted (`QUOTA_EXHAUSTED`, `PREPAID_QUOTA_EXHAUSTED`, `MONTHLY_CAP_REACHED`) or `TRIAL_QUBS_EXHAUSTED`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2182,7 +3122,7 @@
             }
           },
           "403": {
-            "description": "Turnstile verification failed.",
+            "description": "Turnstile verification failed, `INSUFFICIENT_SCOPE`, or `TRIAL_GRANT_SUSPENDED`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2202,7 +3142,7 @@
             }
           },
           "429": {
-            "description": "Rate limited.",
+            "description": "Rate limited, or `TRIAL_RATE_LIMITED` with `Retry-After`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2348,7 +3288,7 @@
         "x-audience": "external",
         "operationId": "getQub",
         "summary": "Read stored qub bytes",
-        "description": "Returns the stored qub bytes plus minimal storage metadata. Private deliveries are OuterWrapper CBOR and require the URL-fragment key K for local unwrap; public deliveries are bare SealedQubCbor and need no K. The Worker does not decrypt this response.\n\n**Rate limiting.** Anonymous (no API key) and free-tier API key callers share a 30-requests-per-minute per-IP bucket (over-quota returns 429 with `code: RATE_LIMIT_IP`). API-key callers whose key record carries `rate_limit > 30` get a per-key bucket sized to that value (Builder default 60/min; over-quota returns 429 with `code: RATE_LIMIT_KEY`). Per-key buckets prevent a single noisy IP from exhausting a paid customer's budget.\n\n**Read quota (Builder).** Builder API-key callers are NOT subject to a hard read cap — reads past the in-base allowance (100,000/month) accrue against the metered `qub_builder_read_overage` Stripe price ($0.50 per 100,000 reads). Enterprise / legacy keys still hit the per-day `max_reads_per_day` cap and receive 429 `READS_EXHAUSTED` on exhaustion.\n\n**Optional charge cap.** Builder customers can opt into a monthly charge ceiling via `PATCH /api/v1/api-keys/{keyHash}` (`max_monthly_charge_usd` field). When set, reads (and seals) reject with 402 `MONTHLY_CAP_REACHED` once the projected end-of-period overage charge would exceed the cap.",
+        "description": "Returns the stored qub bytes plus minimal storage metadata. Private deliveries are OuterWrapper CBOR and require the URL-fragment key K for local unwrap; public deliveries are bare SealedQubCbor and need no K. The Worker does not decrypt this response.\n\n**Rate limiting.** Anonymous (no API key) and free-tier API key callers share a 30-requests-per-minute per-IP bucket (over-quota returns 429 with `code: RATE_LIMIT_IP`). API-key callers whose key record carries `rate_limit > 30` get a per-key bucket sized to that value (Builder default 60/min; over-quota returns 429 with `code: RATE_LIMIT_KEY`). Per-key buckets prevent a single noisy IP from exhausting a paid customer's budget.\n\n**Read quota (Builder).** Builder API-key callers are NOT subject to a hard read cap — reads past the in-base allowance (100,000/month) accrue against the metered `qub_builder_read_overage` Stripe price ($0.50 per 100,000 reads). Enterprise / legacy keys still hit the per-day `max_reads_per_day` cap and receive 429 `READS_EXHAUSTED` on exhaustion.\n\n**Optional charge cap.** Builder customers can opt into a monthly charge ceiling via `PATCH /api/v1/api-keys/{keyHash}` (`max_monthly_charge_usd` field). When set, reads (and seals) reject with 402 `MONTHLY_CAP_REACHED` once the projected end-of-period overage charge would exceed the cap. With a Builder trial key, every admitted request spends one read of the grant's shared 10,000 (60 per minute), decided before any cache or storage access; a refused request spends nothing, an admitted one stays spent even if retrieval then fails.",
         "tags": ["qubs"],
         "security": [
           {},
@@ -2368,6 +3308,56 @@
           }
         ],
         "responses": {
+          "401": {
+            "description": "`invalid_api_key` — an `Authorization: Bearer qub_sk_…` key was presented and is not a known key. Omit the header to read anonymously.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_tx_id` — the path segment is not a storage transaction ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Disabled key, `INSUFFICIENT_SCOPE`, or `TRIAL_GRANT_SUSPENDED`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`TRIAL_UNAVAILABLE` or `QUOTA_UNAVAILABLE` — fail closed; retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "`TRIAL_READS_EXHAUSTED` (trial grant) or `PREPAID_QUOTA_EXHAUSTED` / `MONTHLY_CAP_REACHED` (paid).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "200": {
             "description": "Wrapped-private or bare-public qub bytes plus minimal metadata.",
             "content": {
@@ -2379,7 +3369,7 @@
             }
           },
           "404": {
-            "description": "qub not found.",
+            "description": "`not_found` — the `tx_id` is not a plausible storage transaction ID, or the qub was removed by moderation. A removed qub is answered exactly like an absent one; no other status distinguishes it.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2389,17 +3379,7 @@
             }
           },
           "429": {
-            "description": "Rate limited.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "451": {
-            "description": "Content denied by moderation.",
+            "description": "Rate limited (`RATE_LIMIT_*`), or `TRIAL_RATE_LIMITED` with `Retry-After`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2409,7 +3389,7 @@
             }
           },
           "502": {
-            "description": "Upstream failure fetching from permanent storage or drand.",
+            "description": "`storage_fetch_failed` — the stored bytes are not cached and no storage gateway returned them. This route does not contact drand.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3039,6 +4019,14 @@
                 "schema": { "$ref": "#/components/schemas/Error" }
               }
             }
+          },
+          "403": {
+            "description": "`access_denied` — a Cloudflare Access token was presented and did not verify. The reason is logged, not returned.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
           }
         }
       }
@@ -3119,6 +4107,14 @@
               }
             }
           },
+          "403": {
+            "description": "`access_denied` — a Cloudflare Access token was presented and did not verify. The reason is logged, not returned.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
           "404": {
             "description": "Receipt or provisioned key not found.",
             "content": {
@@ -3137,6 +4133,7 @@
         "summary": "Export USDC receipts with AUD FMV (admin-only)",
         "description": "Exports every USDC payment received in [`from`, `to`] with the AUD fair-market-value at receipt for AU tax accounting (PAYMENTS.md v1.1 §8.7). Pro entitlements (CryptoSource entries on `ent:*` records) and Builder API keys (records with `crypto_invoice_id` set) are both included. Default window: last 30 days. Default format: JSON; pass `?format=csv` for an `attachment` download.",
         "tags": ["Admin"],
+        "security": [{ "adminSecret": [] }],
         "parameters": [
           {
             "name": "from",
@@ -3192,6 +4189,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "`access_denied` — a Cloudflare Access token was presented and did not verify. The reason is logged, not returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3203,6 +4210,7 @@
         "summary": "Acknowledge a manual USDC refund (admin-only)",
         "description": "Records that the operator has refunded a USDC payment off-chain (transferred USDC back to the payer from the Vspry Safe via the Safe app) and downgrades the corresponding entitlement / disables the corresponding API key (PAYMENTS.md v1.1 §8.9). Pro path: marks the matching `CryptoSource` `status=expired` and recomputes derived fields. Builder path: sets `disabled=true` on the API key. The refund_tx_hash is persisted to the admin audit log.",
         "tags": ["Admin"],
+        "security": [{ "adminSecret": [] }],
         "requestBody": {
           "required": true,
           "content": {
@@ -3251,6 +4259,16 @@
           },
           "401": {
             "description": "Missing / invalid admin auth.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`access_denied` — a Cloudflare Access token was presented and did not verify. The reason is logged, not returned.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3490,6 +4508,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "`access_denied` — a Cloudflare Access token was presented and did not verify. The reason is logged, not returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3563,6 +4591,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "`access_denied` — a Cloudflare Access token was presented and did not verify. The reason is logged, not returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3599,6 +4637,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "`access_denied` — a Cloudflare Access token was presented and did not verify. The reason is logged, not returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -3608,7 +4656,7 @@
         "x-audience": "external",
         "operationId": "createWebhook",
         "summary": "Register a webhook",
-        "description": "Register a webhook URL to be notified when a specific qub unlocks. Requires an API key with the `webhooks` scope. The Worker performs a one-time URL ownership challenge (POSTs a verification token to the candidate URL and expects an echo) before the webhook is recorded; failed verification returns 422. Each API key has a `webhook_limit` (Builder default 25); attempting to register beyond the limit returns 403. Rate limited to 10 registrations per API key per minute. The shared `secret` is used to sign every delivery as `Qub-Signature: t=<unix>,v1=<hex>` where `<hex>` is `HMAC_SHA256(secret, '<unix>.<rawBody>')`. Receivers MUST verify the HMAC over the timestamp-prefixed payload and reject deliveries where `now - t > 300` (5-minute replay window). Every delivery payload carries a stable `delivery_id` (deterministic per webhook + qub + event) — receivers SHOULD dedupe on it, because retries follow a backoff ladder (1m/5m/15m/1h/6h/24h then daily, up to 12 attempts across the 7-day retention window) and overlapping sends can occasionally duplicate.",
+        "description": "Register a webhook URL to be notified when a specific qub unlocks. Requires an API key with the `webhooks` scope. The Worker performs a one-time URL ownership challenge (POSTs a verification token to the candidate URL and expects an echo) before the webhook is recorded; failed verification returns 422. Each API key has a `webhook_limit` (Builder default 25); attempting to register beyond the limit returns 403. The limit counts every undelivered webhook the key owns, including those carried over from a key it was rotated or replaced from. Rate limited to 10 registrations per API key per minute. The `secret` belongs to the webhook, not to the API key: rotating or replacing the key does not change it. The shared `secret` is used to sign every delivery as `Qub-Signature: t=<unix>,v1=<hex>` where `<hex>` is `HMAC_SHA256(secret, '<unix>.<rawBody>')`. Receivers MUST verify the HMAC over the timestamp-prefixed payload and reject deliveries where `now - t > 300` (5-minute replay window). Every delivery payload carries a stable `delivery_id` (deterministic per webhook + qub + event) — receivers SHOULD dedupe on it, because retries follow a backoff ladder (1m/5m/15m/1h/6h/24h then daily, up to 12 attempts across the 7-day retention window) and overlapping sends can occasionally duplicate.",
         "tags": ["Webhooks"],
         "security": [
           {
@@ -3692,7 +4740,7 @@
         "x-audience": "external",
         "operationId": "listWebhooks",
         "summary": "List webhooks",
-        "description": "List all webhooks registered by the authenticated API key.",
+        "description": "List the webhooks the authenticated API key owns: those it registered, and those registered by a key it was rotated or replaced from. During the one-hour rotation grace the old secret authenticates as its successor and sees the same list. A webhook leaves the list once it is delivered, deleted, or past its retention window. A disabled key is refused with 403 `API_KEY_DISABLED`.",
         "tags": ["Webhooks"],
         "security": [
           {
@@ -3731,7 +4779,7 @@
         "x-audience": "external",
         "operationId": "deleteWebhook",
         "summary": "Remove a webhook",
-        "description": "Delete a previously registered webhook.",
+        "description": "Delete a webhook the authenticated API key owns (see `GET /api/v1/webhooks` for what a key owns after rotation or replacement). A webhook that was already delivered, has expired, or belongs to another key returns 404. A delivery already in flight when the webhook is deleted may still arrive; it is not retried. A disabled key is refused with 403 `API_KEY_DISABLED`.",
         "tags": ["Webhooks"],
         "security": [
           {
@@ -4428,6 +5476,16 @@
               }
             }
           },
+          "403": {
+            "description": "The Turnstile token did not verify (`turnstile_failed`). Nothing is sent and no send budget is spent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Rate limited (3 per email per hour).",
             "content": {
@@ -4464,12 +5522,17 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["email", "device_id"],
+                "required": ["email", "device_id", "turnstile_token"],
                 "properties": {
                   "email": { "type": "string", "format": "email" },
                   "device_id": {
                     "type": "string",
                     "pattern": "^[a-f0-9]{32}$"
+                  },
+                  "turnstile_token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Cloudflare Turnstile token. Required on every request: this endpoint sends email and has no API-key bypass."
                   },
                   "locale": { "type": "string" }
                 }
@@ -4487,7 +5550,15 @@
             }
           },
           "400": {
-            "description": "Invalid request.",
+            "description": "Invalid request, including a missing `turnstile_token` (`missing_fields`).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "403": {
+            "description": "The Turnstile token did not verify (`turnstile_failed`). Nothing is sent and no send budget is spent.",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/Error" }
@@ -4681,7 +5752,7 @@
         "x-audience": "internal",
         "operationId": "accountDeleteRequest",
         "summary": "Request account deletion",
-        "description": "Step 1 of a two-step, proof-of-inbox account-erasure flow. Mints an HMAC-signed token and emails a confirmation link to the address (valid 1 hour); the link opens a read-only HTML page whose button POSTs the actual erase. The confirmation POST must first win an atomic token-hash QuotaDO claim; claim transport failures return a retriable 503 without starting the cascade, and the claim outlives the credential so replay cannot erase a newly recreated account. Always returns 200 — the request response never reveals whether the email has an account. The cascade removes server-side account data (identity, entitlements, payment sidecars, device links, API keys, email→fingerprint reverse-lookup hint, and — since PR S3 / Andre 2026-05-22 SYSTEMIC-THREAT-REVIEW Finding 42 — tombstones the user's handle in the reverse-index so it can't be immediately re-claimed for reclaim-phishing) but cannot remove published qubs from permanent storage, which are immutable by protocol design. Minimised Lightning tax/accounting receipts are retained for at least five years without email, invoice, browser capability, or credentials and are disclosed on the confirmation surface. Rate-limited 3/hour per IP and per email. Returns 503 when `AUTH_SECRET` is missing.",
+        "description": "Step 1 of a two-step, proof-of-inbox account-erasure flow. Mints an HMAC-signed token and emails a confirmation link to the address (valid 1 hour); the link opens a read-only HTML page whose button POSTs the actual erase. The confirmation POST must first win an atomic token-hash QuotaDO claim; claim transport failures return a retriable 503 without starting the cascade, and the claim outlives the credential so replay cannot erase a newly recreated account. Always returns 200 — the request response never reveals whether the email has an account. The cascade removes server-side account data (identity, entitlements, payment sidecars, device links, API keys and the webhooks they own — deleted, and no delivery is authorised once the erasure has committed (one authorised just before may still arrive) — email→fingerprint reverse-lookup hint, and — since PR S3 / Andre 2026-05-22 SYSTEMIC-THREAT-REVIEW Finding 42 — tombstones the user's handle in the reverse-index so it can't be immediately re-claimed for reclaim-phishing) but cannot remove published qubs from permanent storage, which are immutable by protocol design. Minimised Lightning tax/accounting receipts are retained for at least five years without email, invoice, browser capability, or credentials and are disclosed on the confirmation surface. Rate-limited 3/hour per IP and per email. Returns 503 when `AUTH_SECRET` is missing.",
         "tags": ["Auth"],
         "requestBody": {
           "required": true,
@@ -5914,6 +6985,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "`access_denied` — a Cloudflare Access token was presented and did not verify. The reason is logged, not returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -5969,6 +7050,16 @@
           },
           "401": {
             "description": "Unauthorized — invalid admin secret.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`access_denied` — a Cloudflare Access token was presented and did not verify. The reason is logged, not returned.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6043,6 +7134,16 @@
           },
           "401": {
             "description": "Unauthorized — invalid admin secret.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`access_denied` — a Cloudflare Access token was presented and did not verify. The reason is logged, not returned.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6237,6 +7338,7 @@
         "summary": "Bind this device's signing key to the signed-in email",
         "description": "Path C (IDENTITY.md §3.2.1). The browser session is the mailbox proof; the caller proves possession of the ML-DSA-65 key with a signature over `\"QUB_IDENTITY_SESSION_V1\" || fingerprint || i64_be(timestamp) || utf8(session_email)`. Any valid session may link, however old — unless the owner has used the \"Not me\" link, after which a stale session gets `401 STEP_UP_REQUIRED`. A key already linked to this email returns 200 immediately; otherwise at most 3 new links per account per 24 h, and every new link emails the account a signature-linked alert with a \"Not me\" link (`unlinkEmailAttestation`). Same-origin only; authority comes from the session, so a body `email` or `device_id` is rejected. Never overwrites a key already attested to a different email.",
         "tags": ["Identity"],
+        "security": [{ "browserSession": [] }],
         "requestBody": {
           "required": true,
           "content": {
@@ -6733,6 +7835,30 @@
         }
       }
     },
+    "/api/v1/payment/builder/rate": {
+      "get": {
+        "x-audience": "external",
+        "operationId": "getBuilderCheckoutRate",
+        "summary": "Get the rate used for a new Stripe Builder checkout",
+        "description": "Public, non-cacheable Builder rate card. Fails closed with 503 when the Builder Price or Meter configuration is incomplete, so a rate is never advertised for a checkout that would be refused.",
+        "tags": ["Payment"],
+        "responses": {
+          "200": {
+            "description": "The Builder rate card.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuilderCheckoutRateResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Builder Price or Meter configuration is unavailable."
+          }
+        }
+      }
+    },
     "/api/v1/api-keys/checkout": {
       "post": {
         "x-audience": "internal",
@@ -6936,7 +8062,7 @@
         "x-audience": "external",
         "operationId": "rotateApiKey",
         "summary": "Rotate the current API key",
-        "description": "Issues a new API key for the authenticated client and stores a grace-period mapping so the old key continues to work for one hour. Per-period quota state and ownership indexes move forward; `created_at` is preserved. No scope gate — successfully presenting the current key already proves ownership. Concurrent lifecycle mutations are blocked via a two-minute owner-token lease backed by the QuotaDO. `Idempotency-Key` is mandatory. The newly minted secret appears only in the live first response and is never persisted in the replay store. A same-key replay returns 409 with the `ROTATION_REPLAYED` redacted sentinel; use the still-valid old key during its grace window to rotate again with a fresh idempotency key if the first response was lost.",
+        "description": "Issues a new API key for the authenticated client and stores a grace-period mapping so the old key continues to work for one hour. Per-period quota state and ownership indexes move forward; `created_at` is preserved. Webhooks the old key owned move to the new key: both secrets list and delete them during the grace hour, the webhook limit keeps counting them, and deliveries continue, signed with each webhook's own secret. The move normally completes with the rotation; if it is interrupted, the delivery job completes it on a later pass, and until then the affected webhooks are missing from the list. No scope gate — successfully presenting the current key already proves ownership. Concurrent lifecycle mutations are blocked via a two-minute owner-token lease backed by the QuotaDO. `Idempotency-Key` is mandatory. The newly minted secret appears only in the live first response and is never persisted in the replay store. A same-key replay returns 409 with the `ROTATION_REPLAYED` redacted sentinel; use the still-valid old key during its grace window to rotate again with a fresh idempotency key if the first response was lost.",
         "tags": ["API Keys"],
         "security": [
           {
@@ -7163,7 +8289,7 @@
         "x-audience": "internal",
         "operationId": "replaceMyApiKey",
         "summary": "Replace a lost or suspected-exposed API key",
-        "description": "Requires an exact-same-origin browser session and mailbox proof within the previous 10 minutes. Ownership derives only from the session principal: immutable account ID must match when present, and email fallback is limited to legacy records without one. Returns a new secret in the live response and immediately revokes the addressed credential with no bearer grace. The dashboard derives its non-secret SHA-256 successor locator locally, renders the vault independently of key-card projection, serialises replacement across every key card until copied-successor confirmation, and preserves confirmed successors against stale multi-key projections; only a successful replacement response with explicit predecessor/successor lineage advances the page-lifetime fence. Durable non-authenticating lifecycle tombstones let a retry reach the live successor after response loss. Billing- or operator-disabled keys cannot be replaced.",
+        "description": "Requires an exact-same-origin browser session and mailbox proof within the previous 10 minutes. Ownership derives only from the session principal: immutable account ID must match when present, and email fallback is limited to legacy records without one. Returns a new secret in the live response and immediately revokes the addressed credential with no bearer grace. Webhooks the replaced key owned move to the replacement, as on rotation. The dashboard derives its non-secret SHA-256 successor locator locally, renders the vault independently of key-card projection, serialises replacement across every key card until copied-successor confirmation, and preserves confirmed successors against stale multi-key projections; only a successful replacement response with explicit predecessor/successor lineage advances the page-lifetime fence. Durable non-authenticating lifecycle tombstones let a retry reach the live successor after response loss. Billing- or operator-disabled keys cannot be replaced.",
         "tags": ["API Keys"],
         "security": [{ "browserSession": [] }],
         "parameters": [
@@ -7246,6 +8372,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "`access_denied` — a Cloudflare Access token was presented and did not verify. The reason is logged, not returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -7316,6 +8452,16 @@
           },
           "401": {
             "description": "Unauthorized — invalid admin secret.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`access_denied` — a Cloudflare Access token was presented and did not verify. The reason is logged, not returned.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7525,11 +8671,11 @@
             }
           },
           "404": {
-            "description": "Invalid tx_id.",
+            "description": "Invalid tx_id. The body is the plain text `not found`.",
             "content": {
-              "application/json": {
+              "text/plain": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "type": "string"
                 }
               }
             }
@@ -7542,7 +8688,7 @@
         "x-audience": "external",
         "operationId": "getQubBytes",
         "summary": "Raw stored qub artifact bytes",
-        "description": "Returns the raw stored artifact for a qub: private OuterWrapper CBOR or public bare SealedQubCbor. Uses R2 cache-aside and immutable caching (`Cache-Control: public, max-age=31536000, immutable`). The in-browser embed and SPA resolve the delivery shape, then perform client-side tlock decryption without redundant storage-gateway hits. Rate limited to 120 requests per minute per IP — higher than the JSON `/api/v1/qub/{tx_id}` endpoint because each viewer/embed page-load typically issues one bytes request to refresh the cache.",
+        "description": "Returns the raw stored artifact for a qub: private OuterWrapper CBOR or public bare SealedQubCbor. Uses R2 cache-aside and immutable caching (`Cache-Control: public, max-age=31536000, immutable`). The in-browser embed and SPA resolve the delivery shape, then perform client-side tlock decryption without redundant storage-gateway hits. Rate limited to 120 requests per minute per IP — higher than the JSON `/api/v1/qub/{tx_id}` endpoint because each viewer/embed page-load typically issues one bytes request to refresh the cache. A Builder trial key presented here is refused with 403 `TRIAL_CREDENTIAL_ON_PUBLIC_ROUTE` rather than silently served unmetered.",
         "tags": ["qubs"],
         "parameters": [
           {
@@ -7556,6 +8702,26 @@
           }
         ],
         "responses": {
+          "400": {
+            "description": "`invalid_tx_id` — the path segment is not a storage transaction ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`TRIAL_CREDENTIAL_ON_PUBLIC_ROUTE` — a Builder trial key was presented. Trial keys read through `GET /api/v1/qub/{tx_id}`, which spends the grant's read allowance; this public route is unmetered. Anonymous and paid-key requests are unaffected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "200": {
             "description": "Raw stored artifact bytes: private OuterWrapper CBOR or public bare SealedQubCbor.",
             "content": {
@@ -7579,6 +8745,26 @@
           },
           "429": {
             "description": "Rate limited (120 / IP / minute).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "`storage_fetch_failed` — the artifact is not cached and no storage gateway returned it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`service_unavailable` — the request presented a `qub_sk_` bearer and the key store could not say whether it is a trial key, so the route failed closed rather than serve it unmetered. Retry, or omit the `Authorization` header: this route needs none.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7884,6 +9070,16 @@
               }
             }
           },
+          "400": {
+            "description": "`invalid_staging_id` — the path segment is not a staging id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Staging id not found or expired.",
             "content": {
@@ -7900,7 +9096,7 @@
         "x-audience": "external",
         "operationId": "retractPactStage",
         "summary": "Retract a staged pact before co-signing",
-        "description": "Party A proves possession of the author signing key and retracts a pending staged pact. Requires a fresh retract signature over `SHA3-256(\"QUB_PACT_RETRACT_V1\" || staging_id_bytes)`.",
+        "description": "Party A proves possession of the author signing key and retracts a pending staged pact. Requires the author's public key (`author_pubkey`) and a fresh retract signature over `SHA3-256(\"QUB_PACT_RETRACT_V1\" || staging_id_bytes)`.",
         "tags": ["Pact"],
         "security": [{ "turnstile": [] }],
         "parameters": [
@@ -7919,8 +9115,16 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["retract_signature", "turnstile_token"],
+                "required": [
+                  "author_pubkey",
+                  "retract_signature",
+                  "turnstile_token"
+                ],
                 "properties": {
+                  "author_pubkey": {
+                    "type": "string",
+                    "description": "Base64 ML-DSA-65 public key of Party A (1952 bytes). It must be the key that authored the staged pact."
+                  },
                   "retract_signature": {
                     "type": "string",
                     "description": "Base64 retract signature from Party A's signing key."
@@ -7934,8 +9138,8 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Retracted."
+          "204": {
+            "description": "Retracted. No body. Repeating a retraction that already completed answers 204 again."
           },
           "400": {
             "description": "Invalid request or signature.",
@@ -7947,8 +9151,38 @@
               }
             }
           },
+          "403": {
+            "description": "`turnstile_failed` — Turnstile rejected the token; or `retract_unauthorized` — the key or signature is not the staged pact's author.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
-            "description": "Staging id not found or already sealed.",
+            "description": "`staging_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`already_sealed` — the pact was co-signed first and cannot be retracted; or `cosign_in_progress` — another operation holds the pact's lease; retry once it completes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`QUOTA_UNAVAILABLE` or `STORAGE_UNAVAILABLE` — the pact's lease or its storage could not be reached, and the request failed closed. Retry.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7967,6 +9201,7 @@
         "summary": "Email Party B the invite for a staged pact",
         "description": "Author-only recovery for a stage whose invite was skipped (`email_skipped_reason`). Same eligibility as stage: the pact's author key must carry an email attestation equal to the browser-session email, the pact must be structured (`pact_schema = structured/v1`) with a Party B contact, and it must still be awaiting co-signature. Idempotent once an invite has been accepted for delivery. Send attempts are capped per pact and share the per-recipient daily budget with stage.",
         "tags": ["Pact"],
+        "security": [{ "browserSession": [] }],
         "parameters": [
           {
             "name": "staging_id",
@@ -8173,7 +9408,17 @@
             }
           },
           "400": {
-            "description": "Invalid signature, pubkey, or email-binding marker missing.",
+            "description": "Malformed request, or an invalid cosigner key or signature.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`turnstile_failed` — Turnstile rejected the token. Otherwise the email binding refused this cosigner: `email_not_verified`, `email_verification_expired`, `cosigner_binding_required` or `cosigner_fingerprint_mismatch`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -8204,6 +9449,16 @@
           },
           "502": {
             "description": "Durable publication failed before acknowledgement.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`QUOTA_UNAVAILABLE` or `STORAGE_UNAVAILABLE` — the pact's lease or its storage could not be reached, and the request failed closed. Retry.",
             "content": {
               "application/json": {
                 "schema": {
@@ -8347,9 +9602,20 @@
                           "party_b_label",
                           "created_at",
                           "expires_at",
-                          "status"
+                          "status",
+                          "role"
                         ],
                         "properties": {
+                          "version": {
+                            "type": "integer",
+                            "enum": [1],
+                            "description": "Row format version."
+                          },
+                          "role": {
+                            "type": "string",
+                            "enum": ["author", "cosigner"],
+                            "description": "The caller's part in the pact. `party_b_label` and `party_b_contact` describe the caller's counterparty: Party B on an `author` row, the author on a `cosigner` row."
+                          },
                           "staging_id": {
                             "type": "string"
                           },
@@ -8360,7 +9626,8 @@
                             "type": "string"
                           },
                           "party_b_contact": {
-                            "type": ["string", "null"]
+                            "type": ["string", "null"],
+                            "description": "The counterparty's contact. On an `author` row it is the Party B contact the author signed into the pact, or null. On a `cosigner` row it is the email address attested to the author's signing key when the pact was co-signed, or null when that key has none — whether or not the author signed a contact of their own into the pact."
                           },
                           "created_at": {
                             "type": "integer"
@@ -8433,11 +9700,11 @@
             "description": "Redirect to `/c/{tx_id}`."
           },
           "404": {
-            "description": "Unknown short code.",
+            "description": "Unknown or malformed short code. An HTML page, never cached.",
             "content": {
-              "application/json": {
+              "text/html": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "type": "string"
                 }
               }
             }
@@ -8514,12 +9781,12 @@
         }
       }
     },
-    "/api/v1/og/{tx_id}.png": {
+    "/api/v1/og/{tx_id}": {
       "get": {
         "x-audience": "external",
         "operationId": "getOgImage",
         "summary": "Dynamic Open Graph image",
-        "description": "Dynamic OG card for a qub. Sealed state renders intent + reveal date + watching count; revealed state renders intent + called-it percentage as a results card. R2 cache-aside by state + watching/reaction bucket so unfurls hit cache for the typical viewer flow. Note: despite the `.png` URL suffix (kept for compatibility with OG cards already in the wild), the response body is **SVG** (`Content-Type: image/svg+xml`). Major social-media unfurlers (X, Discord, Slack, Reddit, Threads, Bluesky) accept SVG.",
+        "description": "Dynamic OG card for a qub. Sealed state renders intent + reveal date + watching count; revealed state renders intent + called-it percentage as a results card. R2 cache-aside by state + watching/reaction bucket so unfurls hit cache for the typical viewer flow. The response body is **SVG** (`Content-Type: image/svg+xml`); major social-media unfurlers (X, Discord, Slack, Reddit, Threads, Bluesky) accept SVG. The path carries no file extension: a suffixed form such as `/api/v1/og/{tx_id}.png` is refused as an invalid `tx_id`. A `tx_id` whose reveal time cannot be resolved gets a generic card, not an error.",
         "tags": ["Viewer"],
         "parameters": [
           {
@@ -8544,12 +9811,12 @@
               }
             }
           },
-          "404": {
-            "description": "Unknown tx_id.",
+          "400": {
+            "description": "Malformed `tx_id`. The body is the plain text `invalid tx_id`, not the JSON error envelope.",
             "content": {
-              "application/json": {
+              "text/plain": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "type": "string"
                 }
               }
             }
@@ -8562,13 +9829,14 @@
         "x-audience": "internal",
         "operationId": "lifecycleUnsubscribe",
         "summary": "One-click lifecycle email unsubscribe",
-        "description": "One-click unsubscribe endpoint linked from creator lifecycle emails (seal confirmation, pre-reveal, post-reveal, anniversary). The `token` query parameter is HMAC-signed and binds the request to a specific email + scope (per-qub for the first four; identity-wide for the anniversary scope). On success, writes a suppression record so subsequent lifecycle sends to that address skip delivery. **Always returns 200 with a confirmation HTML page**, even on token failure (expired, malformed, replayed) — surfacing a 400 to a user clicking from their inbox is a worse UX than silently no-op'ing, and any leaked information would help an attacker probe token validity. Token failures are logged operator-side.",
+        "description": "One-click unsubscribe endpoint linked from creator lifecycle emails (seal confirmation, pre-reveal, post-reveal, anniversary). The `t` query parameter is an HMAC-signed token and binds the request to a specific email + scope (per-qub for the first four; identity-wide for the anniversary scope). On success, writes a suppression record so subsequent lifecycle sends to that address skip delivery. A token that fails verification (missing, expired, malformed, tampered) still gets the **200 confirmation HTML page** — surfacing a 400 to a user clicking from their inbox is a worse UX than silently no-op'ing, and any leaked information would help an attacker probe token validity. Token failures are logged operator-side. The one other answer is **503 with a retry page**: the token verified but the opt-out could not be recorded, and confirming an opt-out that did not land would be false.",
         "tags": ["Lifecycle"],
         "parameters": [
           {
-            "name": "token",
+            "name": "t",
             "in": "query",
             "required": true,
+            "description": "HMAC-signed unsubscribe token, as carried by the link in the email.",
             "schema": {
               "type": "string"
             }
@@ -8576,7 +9844,17 @@
         ],
         "responses": {
           "200": {
-            "description": "Unsubscribe confirmation HTML page (always returned, regardless of token validity).",
+            "description": "Unsubscribe confirmation HTML page, returned whether or not the token verified.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Retry HTML page: the token verified, but the opt-out could not be recorded. Nothing changed; following the link again retries.",
             "content": {
               "text/html": {
                 "schema": {

@@ -102,12 +102,41 @@ pub trait TimelockProvider {
     /// Decrypt a ciphertext previously produced by [`Self::encrypt`]
     /// using the BLS round signature fetched from the drand network.
     ///
-    /// The `round_signature` must correspond to the same round the
-    /// ciphertext was encrypted for. A mismatched signature, a
-    /// corrupted ciphertext, or any other failure yields
-    /// [`TimelockError::DecryptionFailed`] (or
-    /// [`TimelockError::InvalidSignature`] if the signature is
-    /// obviously malformed).
+    /// Both inputs are attacker-influenced: the ciphertext comes from
+    /// the qub's author by way of a gateway, the signature from a relay
+    /// or a bundle. Implementations MUST return an error, never panic,
+    /// on any bytes. A signature that is not the beacon of the round the
+    /// ciphertext names yields [`TimelockError::InvalidSignature`]; a
+    /// ciphertext that the beacon does not open, a malformed one, or any
+    /// other failure yields [`TimelockError::DecryptionFailed`].
+    ///
+    /// [`DrandTimelockProvider`]'s exact contract, in order. Steps 1 and
+    /// 3 are qub's implementation rule for this crate's dependencies, not
+    /// protocol requirements: PROTOCOL.md §8 step 7 asks for the beacon
+    /// verified (step 2 here) and the ciphertext decrypted.
+    ///
+    /// 1. the ciphertext is a binary age v1 file whose header holds
+    ///    exactly one `tlock` stanza for this provider's chain, read with
+    ///    age-core 0.11's strict stanza grammar (stanzas of other types,
+    ///    such as the "grease" stanza age adds to every header, are
+    ///    skipped), with a canonical decimal round and a body that is
+    ///    exactly the 128 bytes `U || V || W`; otherwise
+    ///    `DecryptionFailed("tlock header: …")`;
+    /// 2. the signature is exactly 48 bytes and BLS-verifies as the
+    ///    beacon of that round; otherwise `InvalidSignature`;
+    /// 3. tlock's IBE consistency check, replayed here without its panic,
+    ///    holds: with `sigma` and the message recovered under the
+    ///    beacon, `U == r·G₂`; otherwise `DecryptionFailed` with
+    ///    "tlock ciphertext is not consistent with the round's beacon";
+    /// 4. only then does `tlock_age` decrypt, and an age header-MAC or
+    ///    payload failure is `DecryptionFailed`.
+    ///
+    /// Passing step 3 under a verified beacon is what shows the body was
+    /// really encrypted to the round it names; the round in the stanza
+    /// is otherwise only a label. The no-panic guarantee rests on steps
+    /// 1 and 3 matching tlock 0.0.10 and age-core 0.11 exactly: a bump of
+    /// either crate has to re-establish it (`tlock::tests::real_tlock`
+    /// and the `decrypt_tlock` fuzz target are where it is tested).
     fn decrypt(&self, ciphertext: &[u8], round_signature: &[u8]) -> Result<Vec<u8>, TimelockError>;
 
     /// The hex-encoded drand chain hash this provider decrypts for, when
@@ -121,15 +150,18 @@ pub trait TimelockProvider {
         None
     }
 
-    /// The drand round a `ciphertext` is bound to, read from the tlock
-    /// stanza **without** needing the round signature.
+    /// The drand round a `ciphertext`'s tlock stanza names, read
+    /// **without** needing the round signature.
     ///
-    /// This is the *cryptographically meaningful* round — the one that
-    /// actually gates decryption — as opposed to any advisory
-    /// `drand_round` metadata carried alongside the ciphertext. The
-    /// unlock path cross-checks it against `unlock_round(unlock_at)` so
-    /// a malicious or tampered qub cannot bind its ciphertext to an
-    /// already-past round while displaying a future countdown (C1).
+    /// It is a label, not a proof. The round that gates decryption is
+    /// the identity the body was encrypted to, and only
+    /// [`Self::decrypt`]'s IBE consistency check, under that round's
+    /// verified beacon, can show the two agree. Before that beacon
+    /// exists, nobody can. The unlock path cross-checks the label
+    /// against `unlock_round(unlock_at)` so that a qub naming an
+    /// already-past round while displaying a future countdown is
+    /// refused (C1); one that names the displayed round but was
+    /// encrypted to another is refused at decryption instead.
     ///
     /// Returns `Ok(None)` for providers that cannot expose a round (the
     /// non-cryptographic test mock); [`crate::unlock::unlock`] then
@@ -154,15 +186,16 @@ pub trait TimelockProvider {
 #[cfg(feature = "tlock-drand")]
 mod drand {
     use super::{TimelockError, TimelockProvider};
-    use ark_bls12_381::{Bls12_381, G1Affine, G2Affine, g1};
+    use ark_bls12_381::{Bls12_381, Fr, G1Affine, G2Affine, g1};
     use ark_ec::{
-        AffineRepr,
+        AffineRepr, CurveGroup,
         hashing::{HashToCurve, curve_maps::wb::WBMap, map_to_curve_hasher::MapToCurveBasedHasher},
         pairing::Pairing,
         short_weierstrass::Projective,
     };
-    use ark_ff::field_hashers::DefaultFieldHasher;
-    use ark_serialize::CanonicalDeserialize;
+    use ark_ff::{PrimeField, field_hashers::DefaultFieldHasher};
+    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+    use base64::{Engine, engine::general_purpose::STANDARD_NO_PAD};
     use sha2::{Digest, Sha256};
 
     /// drand quicknet hash-to-curve domain-separation tag (RFC 9380),
@@ -171,6 +204,260 @@ mod drand {
     /// Identical to the Worker's `DRAND_QUICKNET_DST` and `tlock`'s
     /// internal `G1_DOMAIN`; the three must stay in lockstep.
     const QUICKNET_G1_DST: &[u8] = b"BLS_SIG_BLS12381G1_XMD:SHA-256_SSWU_RO_NUL_";
+
+    /// A quicknet beacon: a compressed G1 point.
+    const G1_COMPRESSED_LEN: usize = 48;
+    /// The IBE ciphertext `U` for a G1-signature chain: a compressed G2 point.
+    const G2_COMPRESSED_LEN: usize = 96;
+    /// tlock's `V` and `W`, each one 16-byte block.
+    const IBE_BLOCK_LEN: usize = 16;
+    /// A tlock stanza body: `U || V || W` (tlock 0.0.10 `decrypt` reads
+    /// exactly these 128 bytes and ignores anything after them).
+    const TLOCK_BODY_LEN: usize = G2_COMPRESSED_LEN + 2 * IBE_BLOCK_LEN;
+
+    /// The age v1 magic line.
+    const AGE_V1_MAGIC: &[u8] = b"age-encryption.org/v1\n";
+    /// The line that ends an age v1 header's stanzas.
+    const AGE_MAC_PREFIX: &[u8] = b"--- ";
+    /// tlock's recipient stanza tag.
+    const TLOCK_TAG: &[u8] = b"tlock";
+
+    /// The refusal for a stanza body the beacon does not open.
+    pub(super) const IBE_INCONSISTENT: &str =
+        "tlock ciphertext is not consistent with the round's beacon";
+    /// The refusal for a header that does not hold exactly one tlock stanza.
+    pub(super) const ONE_STANZA: &str = "expected exactly one tlock stanza";
+
+    /// The one tlock stanza of an age v1 header.
+    struct TlockStanza {
+        round: u64,
+        body: [u8; TLOCK_BODY_LEN],
+    }
+
+    fn header_error(why: &str) -> TimelockError {
+        TimelockError::DecryptionFailed(format!("tlock header: {why}"))
+    }
+
+    /// `(line, rest)` for the bytes before and after the next `\n`.
+    fn split_line(input: &[u8]) -> Result<(&[u8], &[u8]), TimelockError> {
+        let mut parts = input.splitn(2, |&b| b == b'\n');
+        match (parts.next(), parts.next()) {
+            (Some(line), Some(rest)) => Ok((line, rest)),
+            _ => Err(header_error("truncated")),
+        }
+    }
+
+    /// age's base64 alphabet (RFC 4648, no padding).
+    const fn is_base64_char(c: u8) -> bool {
+        c.is_ascii_alphanumeric() || c == b'+' || c == b'/'
+    }
+
+    /// The last line of an age stanza body, as age-core 0.11's strict
+    /// `wrapped_encoded_data` accepts it: short (0..=63 columns), a valid
+    /// base64 length, and no trailing bits.
+    const fn is_canonical_last_line(line: &[u8]) -> bool {
+        match (line.len() % 4, line.last()) {
+            (0, _) => true,
+            (2, Some(c)) => matches!(c, b'A' | b'Q' | b'g' | b'w'),
+            (3, Some(c)) => matches!(
+                c,
+                b'A' | b'E'
+                    | b'I'
+                    | b'M'
+                    | b'Q'
+                    | b'U'
+                    | b'Y'
+                    | b'c'
+                    | b'g'
+                    | b'k'
+                    | b'o'
+                    | b's'
+                    | b'w'
+                    | b'0'
+                    | b'4'
+                    | b'8'
+            ),
+            _ => false,
+        }
+    }
+
+    /// Parse an age v1 header and return its one tlock stanza.
+    ///
+    /// Each stanza is read with age-core 0.11's **strict** grammar
+    /// (`age_stanza`): an argument line of single-space-separated
+    /// printable strings, then base64 body lines of exactly 64 columns
+    /// ended by one canonical short line. age parses a header that passes
+    /// here into exactly these stanzas, because its strict alternative is
+    /// tried first and succeeds on the same bytes, so the stanza checked
+    /// below is the only one `tlock_age` can hand to tlock's IBE: `tlock_age`'s
+    /// `Identity` declines every stanza whose tag is not `tlock`.
+    ///
+    /// Stanzas of other types are allowed and skipped: age 0.11 adds a
+    /// random "grease" stanza to every header it writes, so every qub
+    /// sealed by this crate carries one. More than one tlock stanza is
+    /// refused, since `tlock_age` reads the LAST one's round as the header
+    /// round and tries the IBE on EVERY one.
+    fn parse_tlock_header(
+        ciphertext: &[u8],
+        chain_hash: &[u8],
+    ) -> Result<TlockStanza, TimelockError> {
+        let mut rest = ciphertext
+            .strip_prefix(AGE_V1_MAGIC)
+            .ok_or_else(|| header_error("not an age v1 file"))?;
+        let mut found: Option<TlockStanza> = None;
+        while !rest.starts_with(AGE_MAC_PREFIX) {
+            let (line, after) = split_line(rest)?;
+            rest = after;
+            let args: Vec<&[u8]> = line
+                .strip_prefix(b"-> ")
+                .ok_or_else(|| header_error("not a recipient stanza"))?
+                .split(|&b| b == b' ')
+                .collect();
+            if args
+                .iter()
+                .any(|a| a.is_empty() || !a.iter().all(|c| (33..=126).contains(c)))
+            {
+                return Err(header_error("malformed stanza arguments"));
+            }
+
+            let mut text = Vec::new();
+            loop {
+                let (line, after) = split_line(rest)?;
+                rest = after;
+                if line.len() > 64 || !line.iter().all(|&c| is_base64_char(c)) {
+                    return Err(header_error("malformed stanza body"));
+                }
+                text.extend_from_slice(line);
+                if line.len() < 64 {
+                    if !is_canonical_last_line(line) {
+                        return Err(header_error("malformed stanza body"));
+                    }
+                    break;
+                }
+            }
+
+            if let Some((&TLOCK_TAG, tlock_args)) = args.split_first() {
+                if found.is_some() {
+                    return Err(header_error(ONE_STANZA));
+                }
+                found = Some(tlock_stanza(tlock_args, &text, chain_hash)?);
+            }
+        }
+        found.ok_or_else(|| header_error(ONE_STANZA))
+    }
+
+    /// The tlock stanza's `round chain_hash` arguments and its body.
+    fn tlock_stanza(
+        args: &[&[u8]],
+        text: &[u8],
+        chain_hash: &[u8],
+    ) -> Result<TlockStanza, TimelockError> {
+        let [round, hash] = args else {
+            return Err(header_error("tlock stanza needs a round and a chain hash"));
+        };
+        // Canonical decimal only: what every encoder writes, and the same
+        // value `str::parse::<u64>` gives tlock_age.
+        let round_value = std::str::from_utf8(round)
+            .ok()
+            .and_then(|r| r.parse::<u64>().ok())
+            .filter(|r| r.to_string().as_bytes() == *round)
+            .ok_or_else(|| header_error("tlock round is not a canonical integer"))?;
+        if hex::decode(hash).ok().as_deref() != Some(chain_hash) {
+            return Err(header_error("tlock stanza is for another chain"));
+        }
+        let body = STANDARD_NO_PAD
+            .decode(text)
+            .ok()
+            .filter(|b| STANDARD_NO_PAD.encode(b).as_bytes() == text)
+            .ok_or_else(|| header_error("tlock body is not canonical base64"))?;
+        let body: [u8; TLOCK_BODY_LEN] = body
+            .try_into()
+            .map_err(|_| header_error("tlock body is not U || V || W"))?;
+        Ok(TlockStanza {
+            round: round_value,
+            body,
+        })
+    }
+
+    /// drand's `expand_message` for the IBE scalar, as tlock 0.0.10's
+    /// `ExpandMsgDrand` computes it: the first `SHA-256(i_le16 || h)`, top
+    /// bit cleared and read little-endian, that is a canonical scalar.
+    fn drand_scalar(h: &[u8]) -> Fr {
+        for i in 1..u16::MAX {
+            let mut d: [u8; 32] = Sha256::new()
+                .chain_update(i.to_le_bytes())
+                .chain_update(h)
+                .finalize()
+                .into();
+            d[0] >>= 1;
+            d.reverse();
+            if Fr::deserialize_compressed(&d[..]).is_ok() {
+                return Fr::from_le_bytes_mod_order(&d);
+            }
+        }
+        // tlock leaves its buffer zeroed when no candidate fits.
+        Fr::from_le_bytes_mod_order(&[0u8; 32])
+    }
+
+    /// The first 16 bytes of `a XOR b` (`a` may be a longer digest, as in
+    /// tlock, which XORs with its first 16 bytes).
+    fn xor_block(a: &[u8], b: &[u8]) -> [u8; IBE_BLOCK_LEN] {
+        let mut out = [0u8; IBE_BLOCK_LEN];
+        for ((o, x), y) in out.iter_mut().zip(a).zip(b) {
+            *o = x ^ y;
+        }
+        out
+    }
+
+    /// tlock 0.0.10's IBE decryption (`ibe::decrypt`), replayed without
+    /// its panic. tlock ends it in `assert_eq!(c.u, r_g)`, so ANY body
+    /// that is not a valid encryption under `signature`'s identity aborts
+    /// the process; here the same comparison is a refusal. The steps and
+    /// byte orders are tlock's own, so a body this accepts is one on which
+    /// tlock's assertion holds:
+    ///
+    /// 1. `sigma = V XOR SHA-256("IBE-H2" || rev(compress(e(σ, U))))[..16]`
+    /// 2. `msg = W XOR SHA-256("IBE-H4" || sigma)[..16]`
+    /// 3. `r = expand_drand(SHA-256("IBE-H3" || sigma || msg))`
+    /// 4. require `U == r·G₂`
+    fn check_ibe_consistency(
+        signature: &G1Affine,
+        body: &[u8; TLOCK_BODY_LEN],
+    ) -> Result<(), TimelockError> {
+        let inconsistent = || TimelockError::DecryptionFailed(IBE_INCONSISTENT.to_string());
+        let (u, v_w) = body.split_at(G2_COMPRESSED_LEN);
+        let (v, w) = v_w.split_at(IBE_BLOCK_LEN);
+        let u = G2Affine::deserialize_compressed(u).map_err(|_| inconsistent())?;
+
+        let mut gid = Vec::new();
+        Bls12_381::pairing(*signature, u)
+            .serialize_compressed(&mut gid)
+            .map_err(|_| inconsistent())?;
+        gid.reverse();
+        let h2 = Sha256::new()
+            .chain_update(b"IBE-H2")
+            .chain_update(&gid)
+            .finalize();
+        let sigma = xor_block(h2.as_slice(), v);
+
+        let h4 = Sha256::new()
+            .chain_update(b"IBE-H4")
+            .chain_update(sigma)
+            .finalize();
+        let msg = xor_block(h4.as_slice(), w);
+
+        let h3 = Sha256::new()
+            .chain_update(b"IBE-H3")
+            .chain_update(sigma)
+            .chain_update(msg)
+            .finalize();
+        let r_g = (G2Affine::generator() * drand_scalar(&h3)).into_affine();
+        if r_g == u {
+            Ok(())
+        } else {
+            Err(inconsistent())
+        }
+    }
 
     /// drand chain parameters used by [`DrandTimelockProvider`].
     ///
@@ -217,6 +504,11 @@ mod drand {
     /// with age encryption for arbitrary-length plaintexts. Output
     /// ciphertexts are raw (non-armored) age bytes with a tlock stanza
     /// carrying the round number and chain hash.
+    ///
+    /// Decryption supports G1-signature chains only (quicknet's
+    /// `bls-unchained-g1-rfc9380`): the beacon check and the IBE replay
+    /// in [`TimelockProvider::decrypt`] both assume a 48-byte G1 beacon
+    /// and a 96-byte G2 `U`.
     #[derive(Debug, Clone)]
     pub struct DrandTimelockProvider {
         info: DrandChainInfo,
@@ -289,11 +581,14 @@ mod drand {
         /// already protects the timelock itself; this closes the parity
         /// gap with the Worker's `verifyRoundSignature` and keeps
         /// attacker-influenced bytes off the decrypt path.
+        /// [`TimelockProvider::decrypt`] also calls it itself, for the
+        /// round its ciphertext names.
         ///
         /// # Errors
         ///
         /// Returns [`TimelockError::InvalidSignature`] if `signature` is
-        /// not a valid compressed G1 point or does not verify, and
+        /// not exactly one 48-byte compressed G1 point or does not
+        /// verify, and
         /// [`TimelockError::InvalidChainKey`] if the configured public
         /// key is not a valid compressed G2 point.
         pub fn verify_round_signature(
@@ -301,6 +596,15 @@ mod drand {
             round: u64,
             signature: &[u8],
         ) -> Result<(), TimelockError> {
+            // Exactly one compressed G1 point. A slice reader ignores bytes
+            // past the 48 the point needs, and tlock picks the curve group
+            // of the signature (and of `U`) from its LENGTH.
+            if signature.len() != G1_COMPRESSED_LEN {
+                return Err(TimelockError::InvalidSignature(format!(
+                    "a quicknet beacon is {G1_COMPRESSED_LEN} bytes, got {}",
+                    signature.len()
+                )));
+            }
             // Per-round identity: SHA-256 over the big-endian round, then
             // hashed to G1 — mirroring the Worker and drand itself.
             let digest = Sha256::digest(round.to_be_bytes());
@@ -356,6 +660,21 @@ mod drand {
             ciphertext: &[u8],
             round_signature: &[u8],
         ) -> Result<Vec<u8>, TimelockError> {
+            // Nothing attacker-supplied may reach tlock's IBE before it is
+            // known to pass: tlock 0.0.10 ends the IBE in `assert_eq!`
+            // (`ibe.rs`, `U = G^r`), so a beacon of another round, a
+            // relabelled stanza or a tampered body PANICS there, and the
+            // release profile aborts. The beacon comes from a relay and the
+            // ciphertext from the qub's author or a gateway. So: one tlock
+            // stanza, read with age's own grammar; the beacon verified for
+            // its round; and the IBE replayed here, panic-free, on exactly
+            // the body tlock will see. Only a body that passes is handed on.
+            let stanza = parse_tlock_header(ciphertext, &self.info.chain_hash)?;
+            self.verify_round_signature(stanza.round, round_signature)?;
+            let signature = G1Affine::deserialize_compressed(round_signature)
+                .map_err(|e| TimelockError::InvalidSignature(format!("signature point: {e}")))?;
+            check_ibe_consistency(&signature, &stanza.body)?;
+
             let mut plaintext = Vec::new();
             tlock_age::decrypt(
                 &mut plaintext,
@@ -372,13 +691,15 @@ mod drand {
         }
 
         fn ciphertext_round(&self, ciphertext: &[u8]) -> Result<Option<u64>, TimelockError> {
-            // `decrypt_header` parses the age/tlock stanza and returns the
-            // bound round without any network access or round signature
-            // (PROTOCOL.md §8 step 7c). A malformed artifact yields a
-            // decryption error rather than a panic.
-            let header = tlock_age::decrypt_header(ciphertext)
-                .map_err(|e| TimelockError::DecryptionFailed(e.to_string()))?;
-            Ok(Some(header.round()))
+            // The round LABEL of the one tlock stanza, read by the same
+            // parser `decrypt` uses, without any network access or round
+            // signature (PROTOCOL.md §8 step 6a). It is a label: only
+            // `decrypt`'s IBE check, with the round's beacon, shows the body
+            // was really encrypted to it. A malformed artifact, or one with
+            // more than one tlock stanza, yields a decryption error.
+            Ok(Some(
+                parse_tlock_header(ciphertext, &self.info.chain_hash)?.round,
+            ))
         }
     }
 }
@@ -511,6 +832,7 @@ mod tests {
 
     #[cfg(feature = "tlock-drand")]
     mod real_tlock {
+        use super::super::drand::{IBE_INCONSISTENT, ONE_STANZA};
         use super::*;
 
         // drand quicknet — scheme bls-unchained-g1-rfc9380
@@ -671,6 +993,311 @@ mod tests {
             assert!(matches!(
                 err,
                 TimelockError::DecryptionFailed(_) | TimelockError::InvalidSignature(_)
+            ));
+        }
+
+        #[test]
+        #[cfg_attr(
+            miri,
+            ignore = "interprets safe ML-DSA / BLS12-381 code for minutes; see MIRI_CRYPTO in docs/TESTING-FRAMEWORK.md"
+        )]
+        fn a_genuine_beacon_of_another_round_is_refused_without_a_panic() {
+            // A valid G1 point that is not the bound round's beacon reaches
+            // tlock's IBE `assert_eq!` unless decrypt verifies it first: the
+            // round-1000 beacon on a round-1001 ciphertext panicked here.
+            let p = provider();
+            let ct = p
+                .encrypt(b"bound to round 1001", QUICKNET_ROUND + 1)
+                .unwrap();
+            let err = p
+                .decrypt(&ct, &round_signature())
+                .expect_err("another round's beacon must not decrypt");
+            assert!(matches!(err, TimelockError::InvalidSignature(_)));
+        }
+
+        // -- Attacker-built ciphertexts that reach tlock's IBE ------------
+        //
+        // tlock 0.0.10 ends its IBE decryption in `assert_eq!(c.u, r_g)`,
+        // and tlock_age runs it on the stanza body whatever the stanza's
+        // round label says. Each construction below panicked there (the
+        // release profile aborts) until `decrypt` checked the IBE itself.
+        // Each uses the GENUINE round-1000 beacon, so the beacon check
+        // passes and only the ciphertext side can refuse.
+
+        /// `haystack` with the one occurrence of `from` replaced by `to`.
+        fn replace_once(haystack: &[u8], from: &[u8], to: &[u8]) -> Vec<u8> {
+            let at = haystack
+                .windows(from.len())
+                .position(|w| w == from)
+                .expect("pattern present");
+            assert!(
+                haystack[at + 1..].windows(from.len()).all(|w| w != from),
+                "pattern must occur once"
+            );
+            [&haystack[..at], to, &haystack[at + from.len()..]].concat()
+        }
+
+        /// The byte range of the tlock stanza: its argument line and its
+        /// three body lines (a 128-byte body is 171 base64 columns: 64, 64
+        /// and 43).
+        fn stanza_range(ct: &[u8]) -> std::ops::Range<usize> {
+            let start = ct
+                .windows(9)
+                .position(|w| w == b"-> tlock ")
+                .expect("tlock stanza");
+            let newlines: Vec<usize> = (start..ct.len())
+                .filter(|&i| ct[i] == b'\n')
+                .take(4)
+                .collect();
+            assert_eq!(newlines[3] - newlines[2] - 1, 43, "the V/W line");
+            start..newlines[3] + 1
+        }
+
+        /// `ct` with one base64 character changed in the tlock stanza
+        /// body's last line, which encodes bytes 96..128: V and W.
+        fn tamper_v_w(ct: &[u8]) -> Vec<u8> {
+            let end = stanza_range(ct).end;
+            let at = end - 1 - 43 + 20;
+            let mut out = ct.to_vec();
+            out[at] = if out[at] == b'A' { b'B' } else { b'A' };
+            out
+        }
+
+        #[test]
+        #[cfg_attr(
+            miri,
+            ignore = "interprets safe ML-DSA / BLS12-381 code for minutes; see MIRI_CRYPTO in docs/TESTING-FRAMEWORK.md"
+        )]
+        fn a_ciphertext_relabelled_to_the_beacons_round_is_refused_without_a_panic() {
+            // Encrypted to round 1001, labelled round 1000: the round-1000
+            // beacon verifies for the label, and the IBE runs with the
+            // wrong key.
+            let p = provider();
+            let ct = p.encrypt(b"really round 1001", QUICKNET_ROUND + 1).unwrap();
+            let relabelled = replace_once(&ct, b"-> tlock 1001 ", b"-> tlock 1000 ");
+            assert_eq!(p.ciphertext_round(&relabelled), Ok(Some(QUICKNET_ROUND)));
+            let err = p
+                .decrypt(&relabelled, &round_signature())
+                .expect_err("a relabelled ciphertext must not decrypt");
+            assert_eq!(
+                err,
+                TimelockError::DecryptionFailed(IBE_INCONSISTENT.to_string())
+            );
+        }
+
+        #[test]
+        #[cfg_attr(
+            miri,
+            ignore = "interprets safe ML-DSA / BLS12-381 code for minutes; see MIRI_CRYPTO in docs/TESTING-FRAMEWORK.md"
+        )]
+        fn a_ciphertext_with_tampered_v_or_w_is_refused_without_a_panic() {
+            let p = provider();
+            let ct = p.encrypt(b"bound to round 1000", QUICKNET_ROUND).unwrap();
+            let tampered = tamper_v_w(&ct);
+            assert_ne!(tampered, ct);
+            let err = p
+                .decrypt(&tampered, &round_signature())
+                .expect_err("a tampered ciphertext must not decrypt");
+            assert_eq!(
+                err,
+                TimelockError::DecryptionFailed(IBE_INCONSISTENT.to_string())
+            );
+        }
+
+        #[test]
+        #[cfg_attr(
+            miri,
+            ignore = "interprets safe ML-DSA / BLS12-381 code for minutes; see MIRI_CRYPTO in docs/TESTING-FRAMEWORK.md"
+        )]
+        fn a_ciphertext_with_more_than_one_stanza_is_refused_without_a_panic() {
+            // tlock_age reads the LAST tlock stanza's round as the header
+            // round, and tries EVERY stanza when decrypting. A genuine
+            // round-1000 stanza last, behind a round-1001 body labelled
+            // 1000, verified one stanza and ran the IBE on the other.
+            let p = provider();
+            let honest = p.encrypt(b"bound to round 1000", QUICKNET_ROUND).unwrap();
+            let other = p.encrypt(b"really round 1001", QUICKNET_ROUND + 1).unwrap();
+            let decoy = replace_once(
+                &other[stanza_range(&other)],
+                b"-> tlock 1001 ",
+                b"-> tlock 1000 ",
+            );
+            let at = stanza_range(&honest).start;
+            let two = [&honest[..at], &decoy[..], &honest[at..]].concat();
+            let err = p
+                .decrypt(&two, &round_signature())
+                .expect_err("two stanzas must not decrypt");
+            assert_eq!(
+                err,
+                TimelockError::DecryptionFailed(format!("tlock header: {ONE_STANZA}"))
+            );
+            assert_eq!(
+                p.ciphertext_round(&two),
+                Err(TimelockError::DecryptionFailed(format!(
+                    "tlock header: {ONE_STANZA}"
+                )))
+            );
+        }
+
+        // -- The header parser's refusals ----------------------------------
+        //
+        // Each takes an honest round-1000 ciphertext, breaks one rule of
+        // the header, and requires the parser's own refusal. The message
+        // is asserted exactly: with the rule removed, a later check (age's
+        // header MAC, tlock_age's chain check, the base64 backstop) still
+        // refuses, so only the message shows which fence held.
+
+        fn honest() -> Vec<u8> {
+            provider()
+                .encrypt(b"bound to round 1000", QUICKNET_ROUND)
+                .unwrap()
+        }
+
+        /// The refusal `decrypt` gives, which `ciphertext_round` must share.
+        fn header_refusal(ct: &[u8]) -> TimelockError {
+            let p = provider();
+            let err = p
+                .decrypt(ct, &round_signature())
+                .expect_err("a malformed header must be refused");
+            assert_eq!(p.ciphertext_round(ct), Err(err.clone()));
+            err
+        }
+
+        fn header_err(why: &str) -> TimelockError {
+            TimelockError::DecryptionFailed(format!("tlock header: {why}"))
+        }
+
+        /// The three body lines of the tlock stanza, as ranges without
+        /// their newlines.
+        fn body_lines(ct: &[u8]) -> [std::ops::Range<usize>; 3] {
+            let nl: Vec<usize> = stanza_range(ct).filter(|&i| ct[i] == b'\n').collect();
+            [nl[0] + 1..nl[1], nl[1] + 1..nl[2], nl[2] + 1..nl[3]]
+        }
+
+        #[test]
+        fn a_non_canonical_round_is_refused() {
+            let ct = honest();
+            for label in [&b"-> tlock 01000 "[..], b"-> tlock +1000 "] {
+                let bad = replace_once(&ct, b"-> tlock 1000 ", label);
+                assert_eq!(
+                    header_refusal(&bad),
+                    header_err("tlock round is not a canonical integer")
+                );
+            }
+        }
+
+        #[test]
+        fn a_stanza_for_another_chain_is_refused() {
+            let ct = honest();
+            let chain = hex::encode(provider().chain_info().chain_hash.clone());
+            let bad = replace_once(&ct, chain.as_bytes(), "00".repeat(32).as_bytes());
+            assert_eq!(
+                header_refusal(&bad),
+                header_err("tlock stanza is for another chain")
+            );
+        }
+
+        #[test]
+        fn a_body_that_is_not_u_v_w_is_refused() {
+            use base64::{Engine, engine::general_purpose::STANDARD_NO_PAD};
+            let ct = honest();
+            let lines = body_lines(&ct);
+            let text: Vec<u8> = lines.iter().flat_map(|r| ct[r.clone()].to_vec()).collect();
+            let body = STANDARD_NO_PAD.decode(&text).unwrap();
+            assert_eq!(body.len(), 128);
+            for len in [127, 129] {
+                let mut other = body.clone();
+                other.resize(len, 0x5a);
+                let encoded = STANDARD_NO_PAD.encode(&other);
+                let mut wrapped = Vec::new();
+                for chunk in encoded.as_bytes().chunks(64) {
+                    wrapped.extend_from_slice(chunk);
+                    wrapped.push(b'\n');
+                }
+                if encoded.len().is_multiple_of(64) {
+                    wrapped.push(b'\n');
+                }
+                let bad = [&ct[..lines[0].start], &wrapped[..], &ct[lines[2].end + 1..]].concat();
+                assert_eq!(
+                    header_refusal(&bad),
+                    header_err("tlock body is not U || V || W"),
+                    "a {len}-byte body"
+                );
+            }
+        }
+
+        #[test]
+        fn a_last_body_line_of_invalid_base64_length_is_refused() {
+            // 43 columns become 41: a length of 1 mod 4 encodes no bytes.
+            let ct = honest();
+            let last = body_lines(&ct)[2].clone();
+            let bad = [&ct[..last.end - 2], &ct[last.end..]].concat();
+            assert_eq!(header_refusal(&bad), header_err("malformed stanza body"));
+        }
+
+        #[test]
+        fn a_last_body_line_with_trailing_bits_is_refused() {
+            // A 43-column line (3 mod 4) may end only in a character whose
+            // two low bits are zero; `B` leaves one set.
+            let mut bad = honest();
+            let last = body_lines(&bad)[2].clone();
+            bad[last.end - 1] = b'B';
+            assert_eq!(header_refusal(&bad), header_err("malformed stanza body"));
+        }
+
+        #[test]
+        fn a_stanza_argument_outside_the_age_charset_is_refused() {
+            let ct = honest();
+            let bad = replace_once(&ct, b"-> tlock 1000 ", b"-> tlock 1000\x7f ");
+            assert_eq!(
+                header_refusal(&bad),
+                header_err("malformed stanza arguments")
+            );
+        }
+
+        #[test]
+        fn a_body_line_longer_than_64_columns_is_refused() {
+            let ct = honest();
+            let first = body_lines(&ct)[0].clone();
+            assert_eq!(first.len(), 64);
+            let bad = [&ct[..first.end], &ct[first.end + 1..]].concat();
+            assert_eq!(header_refusal(&bad), header_err("malformed stanza body"));
+        }
+
+        #[test]
+        #[cfg_attr(
+            miri,
+            ignore = "interprets safe ML-DSA / BLS12-381 code for minutes; see MIRI_CRYPTO in docs/TESTING-FRAMEWORK.md"
+        )]
+        fn an_honest_ciphertext_still_decrypts_byte_identically() {
+            let p = provider();
+            let sig = round_signature();
+            for pt in [
+                Vec::new(),
+                b"x".to_vec(),
+                (0..=255u8).cycle().take(5000).collect::<Vec<u8>>(),
+            ] {
+                let ct = p.encrypt(&pt, QUICKNET_ROUND).unwrap();
+                // age 0.11 writes a random "grease" stanza beside the tlock
+                // one, so stanzas of other types must stay accepted.
+                let stanzas = ct.windows(4).filter(|w| w == b"\n-> ").count();
+                assert_eq!(stanzas, 2, "a tlock stanza and age's grease stanza");
+                assert_eq!(p.ciphertext_round(&ct), Ok(Some(QUICKNET_ROUND)));
+                assert_eq!(p.decrypt(&ct, &sig).unwrap(), pt);
+            }
+        }
+
+        #[test]
+        fn a_beacon_with_trailing_bytes_is_refused() {
+            // A slice reader ignores bytes past the 48 a G1 point needs; tlock
+            // picks the curve group from the signature's LENGTH. Only an
+            // exact 48-byte signature is a quicknet beacon.
+            let p = provider();
+            let mut long = round_signature();
+            long.push(0);
+            assert!(matches!(
+                p.verify_round_signature(QUICKNET_ROUND, &long),
+                Err(TimelockError::InvalidSignature(_))
             ));
         }
 

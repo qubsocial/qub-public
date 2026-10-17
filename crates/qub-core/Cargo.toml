@@ -32,6 +32,9 @@ ark-ec = { workspace = true, optional = true }
 ark-ff = { workspace = true, optional = true }
 ark-serialize = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
+# Decodes the tlock stanza body so decrypt can check the IBE itself before
+# tlock_age runs tlock's panicking one (tlock.rs, `parse_tlock_header`).
+base64 = { workspace = true, optional = true }
 
 [features]
 default = ["tlock-drand"]
@@ -43,6 +46,7 @@ tlock-drand = [
   "dep:ark-ff",
   "dep:ark-serialize",
   "dep:sha2",
+  "dep:base64",
 ]
 test-utils = []
 

@@ -455,7 +455,7 @@ mod tests {
         let h = leaves(7);
         let root = merkle_root(&h);
         let proof = consistency_proof(7, &h).expect("m == n");
-        assert!(proof.is_empty());
+        assert_eq!(proof, [] as [[u8; 32]; 0]);
         assert!(verify_consistency(7, 7, &root, &root, &proof));
         // Non-empty proof at equal sizes is rejected.
         assert!(!verify_consistency(7, 7, &root, &root, &[[0u8; 32]]));

@@ -927,9 +927,11 @@
           return { sealed: top, delivery: "public (bare)" };
         }
 
-        // The round in the tlock ciphertext's age stanza header
-        // ("-> tlock <round> <chain_hash>") is the one that actually gates
-        // decryption. Read it without any signature (§8 step 6a).
+        // The round labelled in the tlock ciphertext's age stanza header
+        // ("-> tlock <round> <chain_hash>"). It is a label: tlock-js fetches
+        // and verifies that round's beacon, and a body encrypted to another
+        // round then fails to decrypt. Read it without any signature
+        // (§8 step 6a) to bind it to the displayed unlock time.
         function stanzaRound(ciphertext) {
           const head = new TextDecoder("latin1").decode(
             ciphertext.subarray(0, Math.min(ciphertext.length, 512)),
